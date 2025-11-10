@@ -94,7 +94,7 @@ export function YoYCAGRChart({
                   : 'text-text-secondary-light hover:text-text-primary-light'
             }`}
           >
-            YoY
+            Y-o-Y
           </button>
           <button
             onClick={() => setShowCAGR(true)}
@@ -173,7 +173,7 @@ export function YoYCAGRChart({
               key={key}
               type="monotone"
               dataKey={key}
-              name={showCAGR ? 'CAGR (%)' : 'YoY Growth (%)'}
+              name={showCAGR ? 'CAGR (%)' : 'Y-o-Y Growth (%)'}
               stroke={colors[index % colors.length]}
               strokeWidth={3}
               dot={{ r: 5 }}

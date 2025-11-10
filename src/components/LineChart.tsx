@@ -124,7 +124,7 @@ export function LineChart({ data, dataKeys, nameKey, colors = ['#0075FF', '#4FD1
                 </p>
                 {yoyValue !== null && (
                   <p className="text-xs ml-2 opacity-75" style={{ color: entry.color }}>
-                    YoY: {yoyValue > 0 ? '+' : ''}{yoyValue.toFixed(1)}%
+                    Y-o-Y: {yoyValue > 0 ? '+' : ''}{yoyValue.toFixed(1)}%
                   </p>
                 )}
               </div>

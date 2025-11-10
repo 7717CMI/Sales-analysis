@@ -25,7 +25,7 @@ interface ShovelMarketData {
 
 const generateComprehensiveData = (): ShovelMarketData[] => {
   const years = Array.from({ length: 15 }, (_, i) => 2021 + i)
-  const regions = ["North America", "Europe", "APAC", "Latin America", "Middle East", "Africa"]
+  const regions = ["North America", "Europe", "Rest of Europe", "Asia Pacific", "Latin America", "Middle East", "Africa"]
   
   const productTypes = ["Digging Shovel", "Snow Shovel", "Trenching Shovel", "Scoop Shovel", "Others"]
   const bladeMaterials = ["Carbon Steel", "Stainless Steel", "Aluminum", "Polycarbonate", "Others"]
@@ -57,12 +57,13 @@ const generateComprehensiveData = (): ShovelMarketData[] => {
   ]
   
   const countryMap: Record<string, string[]> = {
-    "North America": ["USA", "Canada", "Mexico"],
-    "Europe": ["Germany", "UK", "France", "Spain", "Italy", "Poland", "Romania"],
-    "APAC": ["Japan", "Australia", "Singapore", "China", "India", "Thailand", "Pakistan", "Bangladesh", "Nepal"],
-    "Latin America": ["Brazil", "Argentina", "Chile", "Colombia", "Peru"],
-    "Middle East": ["UAE", "Saudi Arabia", "Israel", "Egypt", "Iraq"],
-    "Africa": ["South Africa", "Nigeria", "Kenya", "Ethiopia", "Ghana"]
+    "North America": ["U.S.", "Canada"],
+    "Europe": ["U.K.", "Germany", "Italy", "France", "Spain", "Russia"],
+    "Rest of Europe": [],
+    "Asia Pacific": ["China", "India", "Japan", "South Korea", "ASEAN", "Australia", "Rest of Asia Pacific"],
+    "Latin America": ["Brazil", "Argentina", "Mexico", "Peru", "Rest of Latin America"],
+    "Middle East": ["GCC", "Israel", "Rest of Middle East"],
+    "Africa": ["North Africa", "Central Africa", "South Africa"]
   }
   
   // Product type multipliers for variation
@@ -104,7 +105,8 @@ const generateComprehensiveData = (): ShovelMarketData[] => {
   const regionMultipliers: Record<string, { volume: number; marketShare: number }> = {
     'North America': { volume: 1.5, marketShare: 1.4 },
     'Europe': { volume: 1.3, marketShare: 1.3 },
-    'APAC': { volume: 1.8, marketShare: 1.5 },
+    'Rest of Europe': { volume: 1.2, marketShare: 1.1 },
+    'Asia Pacific': { volume: 1.8, marketShare: 1.5 },
     'Latin America': { volume: 1.1, marketShare: 0.9 },
     'Middle East': { volume: 0.9, marketShare: 1.1 },
     'Africa': { volume: 1.2, marketShare: 0.8 }
@@ -129,8 +131,10 @@ const generateComprehensiveData = (): ShovelMarketData[] => {
     for (const region of regions) {
       const regionMult = regionMultipliers[region]
       const countries = countryMap[region] || []
+      // If no countries, use region name as country (e.g., "Rest of Europe")
+      const countriesToProcess = countries.length > 0 ? countries : [region]
       
-      for (const country of countries) {
+      for (const country of countriesToProcess) {
         for (const productType of productTypes) {
           const productMult = productTypeMultipliers[productType]
           

@@ -68,7 +68,7 @@ export function Home({ onNavigate }: HomeProps) {
           Global Shovel Market Analytics Dashboard
         </h1>
         <p className="text-lg text-electric-blue dark:text-cyan-accent">
-          Comprehensive market intelligence and forecasting analysis | 2021-2035
+          Comprehensive market intelligence and forecasting analysis | 2020-2032
         </p>
       </motion.div>
 

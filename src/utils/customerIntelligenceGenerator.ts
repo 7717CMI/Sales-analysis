@@ -24,7 +24,7 @@ export interface CustomerIntelligenceData {
   leadPotential: string
 }
 
-const regions = ["North America", "Europe", "APAC", "Latin America", "Middle East", "Africa"]
+const regions = ["North America", "Europe", "Rest of Europe", "Asia Pacific", "Latin America", "Middle East", "Africa"]
 
 const industrySectors = [
   "Landscaping (commercial grounds maintenance, development, tree care)",
@@ -171,7 +171,8 @@ const lastNames = ["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "
 const citiesByRegion: Record<string, string[]> = {
   "North America": ["New York", "Los Angeles", "Chicago", "Houston", "Phoenix", "Philadelphia", "San Antonio", "San Diego", "Dallas", "San Jose", "Toronto", "Vancouver", "Montreal"],
   "Europe": ["London", "Berlin", "Madrid", "Rome", "Paris", "Amsterdam", "Vienna", "Stockholm", "Copenhagen", "Zurich", "Brussels", "Warsaw"],
-  "APAC": ["Tokyo", "Shanghai", "Singapore", "Sydney", "Melbourne", "Mumbai", "Delhi", "Bangkok", "Seoul", "Hong Kong", "Jakarta", "Manila"],
+  "Rest of Europe": ["Prague", "Budapest", "Warsaw", "Bucharest", "Sofia", "Zagreb", "Belgrade", "Athens", "Lisbon", "Dublin"],
+  "Asia Pacific": ["Tokyo", "Shanghai", "Singapore", "Sydney", "Melbourne", "Mumbai", "Delhi", "Bangkok", "Seoul", "Hong Kong", "Jakarta", "Manila"],
   "Latin America": ["São Paulo", "Mexico City", "Buenos Aires", "Lima", "Bogotá", "Santiago", "Caracas", "Rio de Janeiro", "Guatemala City", "Havana"],
   "Middle East": ["Dubai", "Riyadh", "Tel Aviv", "Doha", "Kuwait City", "Beirut", "Amman", "Abu Dhabi", "Muscat", "Manama"],
   "Africa": ["Cairo", "Johannesburg", "Lagos", "Nairobi", "Casablanca", "Accra", "Addis Ababa", "Tunis", "Algiers", "Dar es Salaam"]
@@ -210,7 +211,8 @@ function generatePhone(region: string, random: () => number): string {
   const formats: Record<string, string[]> = {
     "North America": ["1-{area}-{num}", "+1 ({area}) {num}"],
     "Europe": ["+{country} {area} {num}", "+{country}-{area}-{num}"],
-    "APAC": ["+{country} {area} {num}", "+{country}-{area}-{num}"],
+    "Rest of Europe": ["+{country} {area} {num}", "+{country}-{area}-{num}"],
+    "Asia Pacific": ["+{country} {area} {num}", "+{country}-{area}-{num}"],
     "Latin America": ["+{country} {area} {num}", "+{country}-{area}-{num}"],
     "Middle East": ["+{country} {area} {num}", "+{country}-{area}-{num}"],
     "Africa": ["+{country} {area} {num}", "+{country}-{area}-{num}"]

@@ -75,11 +75,11 @@ export function BubbleChart({
   const shareMax = Math.max(...transformedData.map(d => d.marketShareIndex))
   const shareRange = shareMax - shareMin
   
-  // Calculate padding: use a percentage of the range to ensure proper padding
-  // Very generous padding to account for largest bubble radius (up to 100px radius)
-  // Use 40-45% of range to ensure largest bubbles are fully visible with no clipping
-  const cagrPadding = Math.max(2.5, cagrRange * 0.45) // 45% of range, minimum 2.5
-  const sharePadding = Math.max(1.2, shareRange * 0.45) // 45% of range, minimum 1.2
+  // Calculate padding: use a generous percentage of the max value to ensure all bubbles are fully visible
+  // Add sufficient padding on top and right to account for bubble sizes
+  // Use 20-25% of max value as padding to ensure largest bubbles don't get clipped
+  const cagrPaddingTop = Math.max(1.5, cagrMax * 0.25) // 25% of max value, minimum 1.5
+  const sharePaddingTop = Math.max(1.0, shareMax * 0.25) // 25% of max value, minimum 1.0
 
   const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
@@ -204,7 +204,7 @@ export function BubbleChart({
             style={{ fontSize: '13px', fontWeight: 500 }}
             tick={{ fill: isDark ? '#E2E8F0' : '#2D3748', fontSize: 12 }}
             tickMargin={10}
-            domain={[cagrMin - cagrPadding, cagrMax + cagrPadding]}
+            domain={[0, cagrMax + cagrPaddingTop]}
             tickFormatter={(value) => typeof value === 'number' ? value.toFixed(1) : value}
             label={{
               value: xAxisLabel,
@@ -224,7 +224,7 @@ export function BubbleChart({
             style={{ fontSize: '13px', fontWeight: 500 }}
             tick={{ fill: isDark ? '#E2E8F0' : '#2D3748', fontSize: 12 }}
             tickMargin={10}
-            domain={[shareMin - sharePadding, shareMax + sharePadding]}
+            domain={[0, shareMax + sharePaddingTop]}
             tickFormatter={(value) => typeof value === 'number' ? value.toFixed(1) : value}
             label={{
               value: yAxisLabel,
