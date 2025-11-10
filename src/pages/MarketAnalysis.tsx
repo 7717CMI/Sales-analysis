@@ -1158,7 +1158,7 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
                     : 'text-text-secondary-light dark:text-text-secondary-dark hover:text-electric-blue dark:hover:text-cyan-accent'
                 }`}
               >
-                Standard Analysis
+                Market Size
                 {activeTab === 'standard' && (
                   <div className={`absolute bottom-0 left-0 right-0 h-0.5 ${isDark ? 'bg-cyan-accent' : 'bg-electric-blue'}`}></div>
                 )}
