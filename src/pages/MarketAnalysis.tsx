@@ -46,7 +46,6 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
   const [incrementalFilters, setIncrementalFilters] = useState({
     region: [] as string[],
     productType: [] as string[],
-    country: [] as string[],
   })
   
   // Separate filters for attractiveness tab
@@ -662,24 +661,20 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
       return {
         regions: [],
         productTypes: [],
-        countries: [],
       }
     }
     
     const regionSet = new Set<string>()
     const productTypeSet = new Set<string>()
-    const countrySet = new Set<string>()
     
     data.forEach(d => {
       if (d.region) regionSet.add(d.region)
       if (d.productType) productTypeSet.add(d.productType)
-      if (d.country) countrySet.add(d.country)
     })
     
     return {
       regions: Array.from(regionSet).sort(),
       productTypes: Array.from(productTypeSet).sort(),
-      countries: Array.from(countrySet).sort(),
     }
   }, [data])
 
@@ -692,9 +687,6 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
     }
     if (incrementalFilters.productType.length > 0) {
       filtered = filtered.filter(d => incrementalFilters.productType.includes(d.productType))
-    }
-    if (incrementalFilters.country.length > 0) {
-      filtered = filtered.filter(d => incrementalFilters.country.includes(d.country))
     }
     
     return filtered
@@ -1640,24 +1632,18 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
                   </p>
                 </div>
                 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <FilterDropdown
                     label="Region"
                     value={incrementalFilters.region}
                     onChange={(value) => setIncrementalFilters({ ...incrementalFilters, region: value as string[] })}
                     options={incrementalFilterOptions.regions}
                   />
-                  <FilterDropdown
-                    label="Product Type"
+                  <HierarchicalFilterDropdown
+                    label="By Product Type"
                     value={incrementalFilters.productType}
                     onChange={(value) => setIncrementalFilters({ ...incrementalFilters, productType: value as string[] })}
-                    options={incrementalFilterOptions.productTypes}
-                  />
-                  <FilterDropdown
-                    label="Country"
-                    value={incrementalFilters.country}
-                    onChange={(value) => setIncrementalFilters({ ...incrementalFilters, country: value as string[] })}
-                    options={incrementalFilterOptions.countries}
+                    hierarchy={getProductTypeHierarchy()}
                   />
                 </div>
               </div>
@@ -1701,11 +1687,11 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
                     onChange={(value) => setAttractivenessFilters({ ...attractivenessFilters, region: value as string[] })}
                     options={attractivenessFilterOptions.regions}
                   />
-                  <FilterDropdown
-                    label="Product Type"
+                  <HierarchicalFilterDropdown
+                    label="By Product Type"
                     value={attractivenessFilters.productType}
                     onChange={(value) => setAttractivenessFilters({ ...attractivenessFilters, productType: value as string[] })}
-                    options={attractivenessFilterOptions.productTypes}
+                    hierarchy={getProductTypeHierarchy()}
                   />
                 </div>
               </div>

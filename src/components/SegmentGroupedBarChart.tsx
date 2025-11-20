@@ -51,15 +51,13 @@ export function SegmentGroupedBarChart({
 
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
-      // In grouped bar charts, payload contains all bars for that x-axis value
-      // We'll show only the first non-zero value (the one being hovered)
-      // Filter to show only bars with values > 0
-      const validEntries = payload.filter((entry: any) => entry.value > 0)
+      // Find the specific bar being hovered (the one with the highest value or first non-zero)
+      const hoveredItem = payload.find((entry: any) => entry.value > 0)
       
-      if (validEntries.length === 0) return null
+      if (!hoveredItem) return null
       
-      // Show only the first entry (the specific bar being hovered)
-      const hoveredItem = validEntries[0]
+      // Get the year from the payload's data point to ensure accuracy
+      const yearFromData = hoveredItem.payload?.year || label
       
       // Extract unit from yAxisLabel (e.g., "Market Value (US$ Million)" -> "US$ Million")
       const unitMatch = yAxisLabel.match(/\(([^)]+)\)/)
@@ -71,7 +69,7 @@ export function SegmentGroupedBarChart({
             ? 'bg-navy-card border-electric-blue text-white' 
             : 'bg-white border-electric-blue text-gray-900'
         }`}>
-          <p className="font-bold text-base mb-2">{xAxisLabel}: {label}</p>
+          <p className="font-bold text-base mb-2">{xAxisLabel}: {yearFromData}</p>
           <div className="flex items-center gap-2">
             <div 
               className="w-4 h-4 rounded" 
@@ -119,7 +117,7 @@ export function SegmentGroupedBarChart({
           stroke={isDark ? '#A0AEC0' : '#4A5568'}
           style={{ fontSize: '13px', fontWeight: 500 }}
           angle={0}
-          textAnchor="middle"
+          textAnchor="start"
           height={60}
           interval={0}
           tick={{ fill: isDark ? '#E2E8F0' : '#2D3748' }}
@@ -175,13 +173,9 @@ export function SegmentGroupedBarChart({
           verticalAlign="bottom"
           align="center"
           formatter={(value) => {
-            // Truncate long labels for better readability
-            const maxLength = 25
-            const displayValue = typeof value === 'string' && value.length > maxLength 
-              ? value.substring(0, maxLength) + '...' 
-              : value
+            // Display full label without truncation
             return (
-              <span style={{ fontSize: '12px', fontWeight: 500 }}>{displayValue}</span>
+              <span style={{ fontSize: '12px', fontWeight: 500 }}>{value}</span>
             )
           }}
         />

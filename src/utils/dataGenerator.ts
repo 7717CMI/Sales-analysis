@@ -210,22 +210,32 @@ const generateComprehensiveData = (): ShovelMarketData[] => {
               for (const application of applications) {
                 const appMult = applicationMultipliers[application]
                 
-                // Select one random profession and sales channel instead of looping through all
-                const profession = professions[Math.floor(seededRandom() * professions.length)]
-                const salesChannel = salesChannels[Math.floor(seededRandom() * salesChannels.length)]
-                
-                // Determine distribution channel type based on sales channel
-                const distributionChannelType = salesChannel.startsWith('D2C') || salesChannel.startsWith('Offline') || salesChannel.startsWith('Others') ? salesChannel : 'Online'
-                const channelMult = distributionChannelMultipliers[salesChannel.includes('Offline') ? 'Offline' : 'Online']
-                
-                // Determine specific distribution channel
-                const distributionChannel = salesChannel.includes('Offline')
-                  ? offlineChannels[Math.floor(seededRandom() * offlineChannels.length)]
-                  : onlineChannels[Math.floor(seededRandom() * onlineChannels.length)]
-                
-                const brand = brands[Math.floor(seededRandom() * brands.length)]
-                const brandMult = brandPremiumMap[brand] || 1.0
-                const company = companies[Math.floor(seededRandom() * companies.length)]
+                // Generate data for each profession to ensure all professions have data
+                for (const profession of professions) {
+                  // Select 2-3 random sales channels per profession to ensure variety without explosion
+                  const numChannels = 2 + Math.floor(seededRandom() * 2) // 2 or 3 channels
+                  const selectedChannels: string[] = []
+                  
+                  for (let i = 0; i < numChannels; i++) {
+                    const salesChannel = salesChannels[Math.floor(seededRandom() * salesChannels.length)]
+                    if (!selectedChannels.includes(salesChannel)) {
+                      selectedChannels.push(salesChannel)
+                    }
+                  }
+                  
+                  for (const salesChannel of selectedChannels) {
+                    // Determine distribution channel type based on sales channel
+                    const distributionChannelType = salesChannel.startsWith('D2C') || salesChannel.startsWith('Offline') || salesChannel.startsWith('Others') ? salesChannel : 'Online'
+                    const channelMult = distributionChannelMultipliers[salesChannel.includes('Offline') ? 'Offline' : 'Online']
+                    
+                    // Determine specific distribution channel
+                    const distributionChannel = salesChannel.includes('Offline')
+                      ? offlineChannels[Math.floor(seededRandom() * offlineChannels.length)]
+                      : onlineChannels[Math.floor(seededRandom() * onlineChannels.length)]
+                    
+                    const brand = brands[Math.floor(seededRandom() * brands.length)]
+                    const brandMult = brandPremiumMap[brand] || 1.0
+                    const company = companies[Math.floor(seededRandom() * companies.length)]
                 
                 // Apply all multipliers for variation
                 const basePrice = 10 + seededRandom() * 90 // $10-$100
@@ -253,32 +263,34 @@ const generateComprehensiveData = (): ShovelMarketData[] => {
                 const yoyGrowth = -5 + seededRandom() * 20
                 const qty = Math.floor(volumeUnits * (0.8 + seededRandom() * 0.4))
                 
-                data.push({
-                  recordId,
-                  year,
-                  region,
-                  country,
-                  productType,
-                  bladeMaterial, // Product Form
-                  handleLength, // Price Range
-                  application, // Age Group
-                  endUser: profession, // Profession
-                  distributionChannelType: salesChannel, // Sales Channel
-                  distributionChannel,
-                  brand,
-                  company,
-                  price: Math.round(price * 100) / 100,
-                  volumeUnits,
-                  qty,
-                  revenue: Math.round(revenue * 100) / 100,
-                  marketValueUsd: Math.round(marketValueUsd * 100) / 100,
-                  value: Math.round(marketValueUsd * 100) / 100,
-                  marketSharePct: Math.round(marketSharePct * 100) / 100,
-                  cagr: Math.round(cagr * 100) / 100,
-                  yoyGrowth: Math.round(yoyGrowth * 100) / 100,
-                })
-                
-                recordId++
+                    data.push({
+                      recordId,
+                      year,
+                      region,
+                      country,
+                      productType,
+                      bladeMaterial, // Product Form
+                      handleLength, // Price Range
+                      application, // Age Group
+                      endUser: profession, // Profession
+                      distributionChannelType: salesChannel, // Sales Channel
+                      distributionChannel,
+                      brand,
+                      company,
+                      price: Math.round(price * 100) / 100,
+                      volumeUnits,
+                      qty,
+                      revenue: Math.round(revenue * 100) / 100,
+                      marketValueUsd: Math.round(marketValueUsd * 100) / 100,
+                      value: Math.round(marketValueUsd * 100) / 100,
+                      marketSharePct: Math.round(marketSharePct * 100) / 100,
+                      cagr: Math.round(cagr * 100) / 100,
+                      yoyGrowth: Math.round(yoyGrowth * 100) / 100,
+                    })
+                    
+                    recordId++
+                  }
+                }
               }
             }
           }
