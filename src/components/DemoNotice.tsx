@@ -26,7 +26,7 @@ export function DemoNotice() {
           Demo Data Notice
         </h3>
         <p className="text-sm leading-relaxed text-yellow-800 dark:text-yellow-200 font-medium">
-          This dashboard uses synthetic/demo data for illustration purposes only. No real-world vaccine market data is associated with this application.
+          This dashboard uses synthetic/demo data for illustration purposes only. No real-world market data is associated with this application.
         </p>
       </div>
     </motion.div>

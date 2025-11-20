@@ -24,7 +24,7 @@ export function Home({ onNavigate }: HomeProps) {
       gradient: "#0075FF",
     },
     {
-      title: "Customer Intelligence",
+      title: "Customer Sales Analysis",
       description: "Customer data analysis and insights",
       icon: Users,
       id: "CustomerIntelligence",
@@ -65,7 +65,7 @@ export function Home({ onNavigate }: HomeProps) {
         className="mb-10 text-center"
       >
         <h1 className="text-3xl md:text-4xl font-bold text-text-primary-light dark:text-text-primary-dark mb-2">
-          Global Shovel Market Analytics Dashboard
+          Customer Sales Analysis Dashboard
         </h1>
         <p className="text-lg text-electric-blue dark:text-cyan-accent">
           Comprehensive market intelligence and forecasting analysis | 2020-2032
