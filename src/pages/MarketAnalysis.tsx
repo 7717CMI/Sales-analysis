@@ -1,9 +1,11 @@
 import { useState, useEffect, useMemo } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { motion } from 'framer-motion'
-import { getData, formatWithCommas, clearDataCache, type ShovelMarketData } from '../utils/dataGenerator'
+import { getData, formatWithCommas, clearDataCache, type ShovelMarketData, getProductTypeHierarchy, getSalesChannelHierarchy } from '../utils/dataGenerator'
 import { StatBox } from '../components/StatBox'
 import { FilterDropdown } from '../components/FilterDropdown'
+import { HierarchicalFilterDropdown } from '../components/HierarchicalFilterDropdown'
+import { NestedHierarchicalFilterDropdown } from '../components/NestedHierarchicalFilterDropdown'
 import { SegmentGroupedBarChart } from '../components/SegmentGroupedBarChart'
 import { RegionCountryStackedBarChart } from '../components/RegionCountryStackedBarChart'
 import { CrossSegmentStackedBarChart } from '../components/CrossSegmentStackedBarChart'
@@ -29,13 +31,13 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
   const [loading, setLoading] = useState(true)
   const [filters, setFilters] = useState({
     year: [] as number[],
-    country: [] as string[],
+    country: [] as string[], // Using for region
     productType: [] as string[],
     bladeMaterial: [] as string[],
     handleLength: [] as string[],
     application: [] as string[],
-    endUser: [] as string[],
-    distributionChannelType: [] as string[],
+    endUser: [] as string[], // Using for profession
+    distributionChannelType: [] as string[], // Using for sales channel
     distributionChannel: [] as string[],
     marketEvaluation: 'By Value' as MarketEvaluationType,
   })
@@ -72,49 +74,38 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
         
         setTimeout(() => {
           const availableYears = [...new Set(generatedData.map(d => d.year))].sort()
-          const availableCountries = [...new Set(generatedData.map(d => d.country))].sort()
+          const availableRegions = [...new Set(generatedData.map(d => d.region))].filter(Boolean).sort()
           const availableProductTypes = [...new Set(generatedData.map(d => d.productType))].sort()
           const availableBladeMaterials = [...new Set(generatedData.map(d => d.bladeMaterial))].filter(Boolean).sort()
           const availableHandleLengths = [...new Set(generatedData.map(d => d.handleLength))].filter(Boolean).sort()
           const availableApplications = [...new Set(generatedData.map(d => d.application))].filter(Boolean).sort()
-          const availableEndUsers = [...new Set(generatedData.map(d => d.endUser))].filter(Boolean).sort()
-          // Default to 2024 and 2025 if available, otherwise use available years
+          const availableProfessions = [...new Set(generatedData.map(d => d.endUser))].filter(Boolean).sort()
+          const availableSalesChannels = [...new Set(generatedData.map(d => d.distributionChannelType))].filter(Boolean).sort()
+          // Default to 2024 and 2025 if available, otherwise use first 2 available years
           const defaultYears = availableYears.includes(2024) && availableYears.includes(2025)
             ? [2024, 2025]
-            : availableYears.includes(2025)
-              ? [2025]
-              : availableYears.includes(2024)
-                ? [2024]
-                : availableYears.length > 0
-                  ? [availableYears[availableYears.length - 1]]
-                  : []
-          // Default to U.S. and Canada if available
-          const usCountry = availableCountries.find(c => c === 'U.S.' || c === 'US' || c === 'USA')
-          const canadaCountry = availableCountries.find(c => c === 'Canada')
-          const defaultCountries = usCountry && canadaCountry
-            ? [usCountry, canadaCountry]
-            : availableCountries.length >= 2
-              ? availableCountries.slice(0, 2)
-              : availableCountries.length === 1
-                ? [availableCountries[0]]
-                : []
+            : availableYears.length >= 2
+              ? availableYears.slice(-2)
+              : availableYears
           
-          // Select all available options by default to show all data in graphs
-          const defaultProductTypes = availableProductTypes
-          const defaultBladeMaterials = availableBladeMaterials
-          const defaultHandleLengths = availableHandleLengths
-          const defaultApplications = availableApplications
-          const defaultEndUsers = availableEndUsers
+          // Default to first 2 items from each filter
+          const defaultRegions = availableRegions.slice(0, 2)
+          const defaultProductTypes = availableProductTypes.slice(0, 2)
+          const defaultBladeMaterials = availableBladeMaterials.slice(0, 2)
+          const defaultHandleLengths = availableHandleLengths.slice(0, 2)
+          const defaultApplications = availableApplications.slice(0, 2)
+          const defaultProfessions = availableProfessions.slice(0, 2)
+          const defaultSalesChannels = availableSalesChannels.slice(0, 2)
           
           setFilters({
             year: defaultYears,
-            country: defaultCountries,
+            country: defaultRegions,
             productType: defaultProductTypes,
             bladeMaterial: defaultBladeMaterials,
             handleLength: defaultHandleLengths,
             application: defaultApplications,
-            endUser: defaultEndUsers,
-            distributionChannelType: [],
+            endUser: defaultProfessions,
+            distributionChannelType: defaultSalesChannels,
             distributionChannel: [],
             marketEvaluation: 'By Value',
           })
@@ -154,14 +145,14 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
     for (let i = 0; i < data.length; i++) {
       const d = data[i]
       if (d.year) yearSet.add(d.year)
-      if (d.country) countrySet.add(d.country)
+      if (d.region) countrySet.add(d.region) // Map region to country field
       if (d.productType) productTypeSet.add(d.productType)
       if (d.bladeMaterial) bladeMaterialSet.add(d.bladeMaterial)
       if (d.handleLength) handleLengthSet.add(d.handleLength)
       if (d.application) applicationSet.add(d.application)
-      if (d.endUser) endUserSet.add(d.endUser)
+      if (d.endUser) endUserSet.add(d.endUser) // This contains profession data
       if (d.distributionChannelType) {
-        distributionChannelTypeSet.add(d.distributionChannelType)
+        distributionChannelTypeSet.add(d.distributionChannelType) // This contains sales channel data
       }
     }
 
@@ -283,7 +274,7 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
       filtered = filtered.filter(d => filters.year.includes(d.year))
     }
     if (filters.country.length > 0) {
-      filtered = filtered.filter(d => filters.country.includes(d.country))
+      filtered = filtered.filter(d => filters.country.includes(d.region))
     }
     if (filters.productType.length > 0) {
       filtered = filtered.filter(d => filters.productType.includes(d.productType))
@@ -302,9 +293,6 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
     }
     if (filters.distributionChannelType.length > 0) {
       filtered = filtered.filter(d => filters.distributionChannelType.includes(d.distributionChannelType))
-    }
-    if (filters.distributionChannel.length > 0) {
-      filtered = filtered.filter(d => filters.distributionChannel.includes(d.distributionChannel))
     }
 
     return filtered
@@ -1225,7 +1213,7 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
               </p>
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               <FilterDropdown
                 label="Year"
                 value={filters.year.map(y => String(y))}
@@ -1233,98 +1221,46 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
                 options={uniqueOptions.years ? uniqueOptions.years.map(y => String(y)) : []}
               />
               <FilterDropdown
-                label="Country"
+                label="By Region"
                 value={filters.country}
                 onChange={(value) => setFilters({ ...filters, country: value as string[] })}
                 options={uniqueOptions.countries || []}
               />
-              <div className="w-full">
-                <label className="block text-sm font-medium text-text-secondary-light dark:text-text-secondary-dark mb-2">
-                  Market Evaluation
-                </label>
-                <select
-                  value={filters.marketEvaluation}
-                  onChange={(e) => setFilters({ ...filters, marketEvaluation: e.target.value as MarketEvaluationType })}
-                  className={`w-full px-4 py-2 rounded-lg border ${
-                    isDark 
-                      ? 'bg-navy-card border-navy-light text-text-primary-dark hover:border-electric-blue' 
-                      : 'bg-white border-gray-300 text-text-primary-light hover:border-electric-blue'
-                  } focus:outline-none focus:ring-2 focus:ring-electric-blue transition-all`}
-                >
-                  <option value="By Value">By Value</option>
-                  <option value="By Volume">By Volume</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              <FilterDropdown
+              <HierarchicalFilterDropdown
                 label="By Product Type"
                 value={filters.productType}
                 onChange={(value) => setFilters({ ...filters, productType: value as string[] })}
-                options={uniqueOptions.productTypes}
+                hierarchy={getProductTypeHierarchy()}
               />
               <FilterDropdown
-                label="By Blade Material"
+                label="By Product Form"
                 value={filters.bladeMaterial}
                 onChange={(value) => setFilters({ ...filters, bladeMaterial: value as string[] })}
                 options={uniqueOptions.bladeMaterials}
               />
               <FilterDropdown
-                label="By Handle Length"
+                label="By Price Range"
                 value={filters.handleLength}
                 onChange={(value) => setFilters({ ...filters, handleLength: value as string[] })}
                 options={uniqueOptions.handleLengths}
               />
               <FilterDropdown
-                label="By Application"
+                label="By Age Group"
                 value={filters.application}
                 onChange={(value) => setFilters({ ...filters, application: value as string[] })}
                 options={uniqueOptions.applications}
               />
               <FilterDropdown
-                label="By End User"
+                label="By Profession"
                 value={filters.endUser}
                 onChange={(value) => setFilters({ ...filters, endUser: value as string[] })}
-                options={uniqueOptions.endUsers}
+                options={uniqueOptions.endUsers || []}
               />
-              <FilterDropdown
-                label="By Distribution Channel Type"
+              <NestedHierarchicalFilterDropdown
+                label="By Sales Channel"
                 value={filters.distributionChannelType}
-                onChange={(value) => {
-                  const newTypes = value as string[]
-                  // Filter out invalid subtypes when type changes
-                  let validSubtypes = filters.distributionChannel
-                  if (newTypes.length > 0 && filters.distributionChannel.length > 0) {
-                    // Get valid subtypes for selected types
-                    const typeFilteredData = data.filter(d => 
-                      newTypes.includes(d.distributionChannelType)
-                    )
-                    const validSubtypeSet = new Set<string>()
-                    typeFilteredData.forEach(d => {
-                      if (d.distributionChannel) validSubtypeSet.add(d.distributionChannel)
-                    })
-                    validSubtypes = filters.distributionChannel.filter(subtype => 
-                      validSubtypeSet.has(subtype)
-                    )
-                  } else if (newTypes.length === 0) {
-                    // If no types selected, clear subtypes
-                    validSubtypes = []
-                  }
-                  setFilters({ 
-                    ...filters, 
-                    distributionChannelType: newTypes,
-                    distributionChannel: validSubtypes
-                  })
-                }}
-                options={uniqueOptions.distributionChannelTypes || []}
-              />
-              <FilterDropdown
-                label="By Distribution Channel Subtype"
-                value={filters.distributionChannel}
-                onChange={(value) => setFilters({ ...filters, distributionChannel: value as string[] })}
-                options={availableDistributionChannels}
-                groupedOptions={distributionChannelGroupedOptions}
+                onChange={(value) => setFilters({ ...filters, distributionChannelType: value as string[] })}
+                hierarchy={getSalesChannelHierarchy()}
               />
             </div>
 
@@ -1455,9 +1391,9 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
                 {analysisData.bladeMaterialStackedData.chartData.length > 0 && analysisData.bladeMaterialStackedData.segments.length > 0 && (
                   <div className={`p-5 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 h-[480px] flex flex-col ${isDark ? 'bg-navy-card border-2 border-navy-light' : 'bg-white border-2 border-gray-200'}`}>
                     <div className="mb-3 pb-3 border-b border-gray-200 dark:border-navy-light">
-                      <InfoTooltip content={`• Shows ${filters.marketEvaluation === 'By Volume' ? 'market volume' : 'market size'} share by blade material by year\n• X-axis: Year, Y-axis: ${filters.marketEvaluation === 'By Volume' ? 'Market Volume' : 'Market Size'}\n• Each stacked bar shows the proportion for that year\n• Hover over bars to see detailed values and percentages`}>
+                      <InfoTooltip content={`• Shows ${filters.marketEvaluation === 'By Volume' ? 'market volume' : 'market size'} share by product form by year\n• X-axis: Year, Y-axis: ${filters.marketEvaluation === 'By Volume' ? 'Market Volume' : 'Market Size'}\n• Each stacked bar shows the proportion for that year\n• Hover over bars to see detailed values and percentages`}>
                         <h3 className="text-base font-bold text-electric-blue dark:text-cyan-accent mb-1 cursor-help">
-                          Blade Material Share
+                          Product Form Share
                         </h3>
                       </InfoTooltip>
                       <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
@@ -1480,9 +1416,9 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
                 {analysisData.handleLengthStackedData.chartData.length > 0 && analysisData.handleLengthStackedData.segments.length > 0 && (
                   <div className={`p-5 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 h-[480px] flex flex-col ${isDark ? 'bg-navy-card border-2 border-navy-light' : 'bg-white border-2 border-gray-200'}`}>
                     <div className="mb-3 pb-3 border-b border-gray-200 dark:border-navy-light">
-                      <InfoTooltip content={`• Shows ${filters.marketEvaluation === 'By Volume' ? 'market volume' : 'market size'} share by handle length by year\n• X-axis: Year, Y-axis: ${filters.marketEvaluation === 'By Volume' ? 'Market Volume' : 'Market Size'}\n• Each stacked bar shows the proportion for that year\n• Hover over bars to see detailed values and percentages`}>
+                      <InfoTooltip content={`• Shows ${filters.marketEvaluation === 'By Volume' ? 'market volume' : 'market size'} share by price range by year\n• X-axis: Year, Y-axis: ${filters.marketEvaluation === 'By Volume' ? 'Market Volume' : 'Market Size'}\n• Each stacked bar shows the proportion for that year\n• Hover over bars to see detailed values and percentages`}>
                         <h3 className="text-base font-bold text-electric-blue dark:text-cyan-accent mb-1 cursor-help">
-                          Handle Length Share
+                          Price Range Share
                         </h3>
                       </InfoTooltip>
                       <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
@@ -1505,9 +1441,9 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
                 {analysisData.applicationStackedData.chartData.length > 0 && analysisData.applicationStackedData.segments.length > 0 && (
                   <div className={`p-5 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 h-[480px] flex flex-col ${isDark ? 'bg-navy-card border-2 border-navy-light' : 'bg-white border-2 border-gray-200'}`}>
                     <div className="mb-3 pb-3 border-b border-gray-200 dark:border-navy-light">
-                      <InfoTooltip content={`• Shows ${filters.marketEvaluation === 'By Volume' ? 'market volume' : 'market size'} share by application by year\n• X-axis: Year, Y-axis: ${filters.marketEvaluation === 'By Volume' ? 'Market Volume' : 'Market Size'}\n• Each stacked bar shows the proportion for that year\n• Hover over bars to see detailed values and percentages`}>
+                      <InfoTooltip content={`• Shows ${filters.marketEvaluation === 'By Volume' ? 'market volume' : 'market size'} share by age group by year\n• X-axis: Year, Y-axis: ${filters.marketEvaluation === 'By Volume' ? 'Market Volume' : 'Market Size'}\n• Each stacked bar shows the proportion for that year\n• Hover over bars to see detailed values and percentages`}>
                         <h3 className="text-base font-bold text-electric-blue dark:text-cyan-accent mb-1 cursor-help">
-                          Application Share
+                          Age Group Share
                         </h3>
                       </InfoTooltip>
                       <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
@@ -1526,30 +1462,7 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
                   </div>
                 )}
 
-                {/* End User Stacked Bar Chart */}
-                {analysisData.endUserStackedData.chartData.length > 0 && analysisData.endUserStackedData.segments.length > 0 && (
-                  <div className={`p-5 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 h-[480px] flex flex-col ${isDark ? 'bg-navy-card border-2 border-navy-light' : 'bg-white border-2 border-gray-200'}`}>
-                    <div className="mb-3 pb-3 border-b border-gray-200 dark:border-navy-light">
-                      <InfoTooltip content={`• Shows ${filters.marketEvaluation === 'By Volume' ? 'market volume' : 'market size'} share by end user by year\n• X-axis: Year, Y-axis: ${filters.marketEvaluation === 'By Volume' ? 'Market Volume' : 'Market Size'}\n• Each stacked bar shows the proportion for that year\n• Hover over bars to see detailed values and percentages`}>
-                        <h3 className="text-base font-bold text-electric-blue dark:text-cyan-accent mb-1 cursor-help">
-                          End User Share
-                        </h3>
-                      </InfoTooltip>
-                      <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
-                        {getDataLabel()}
-                      </p>
-                    </div>
-                    <div className="flex-1 flex items-center justify-center min-h-0">
-                      <CrossSegmentStackedBarChart
-                        data={analysisData.endUserStackedData.chartData}
-                        dataKeys={analysisData.endUserStackedData.segments}
-                        xAxisLabel="Year"
-                        yAxisLabel={getDataLabel()}
-                        nameKey="year"
-                      />
-                    </div>
-                  </div>
-                )}
+
 
                 {/* Distribution Channel Type Stacked Bar Chart */}
                 {analysisData.distributionChannelTypeStackedData.chartData.length > 0 && analysisData.distributionChannelTypeStackedData.segments.length > 0 && (
