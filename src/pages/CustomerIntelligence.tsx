@@ -59,9 +59,6 @@ export function CustomerIntelligence({ onNavigate }: CustomerIntelligenceProps) 
         <h1 className="text-4xl font-bold text-text-primary-light dark:text-text-primary-dark mb-3">
           Company Sales Analysis
         </h1>
-        <p className="text-xl text-text-secondary-light dark:text-text-secondary-dark">
-          Sales data analysis by key cosmetics players
-        </p>
       </motion.div>
 
       {/* Tabs */}

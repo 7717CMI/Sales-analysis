@@ -331,6 +331,8 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
     if (filteredData.length === 0) {
       return {
         productTypeChartData: [],
+        productTypeStackedData: { chartData: [], segments: [] },
+        productTypeIsStacked: false,
         bladeMaterialChartData: [],
         handleLengthChartData: [],
         applicationChartData: [],
@@ -429,12 +431,127 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
       return { chartData, segments: activeSegments }
     }
 
-    // Product Type Chart - use selected filters to show all selected options
-    const productTypeData = generateSegmentChartData(
-      'productType', 
-      (d) => d.productType || '',
-      filters.productType.length > 0 ? filters.productType : undefined
-    )
+    // Product Type Chart - special handling for parent-child relationships
+    // If a parent (like "Body Care") is selected, show it as a stacked bar with its children, not the parent as a separate bar
+    const generateProductTypeChartData = () => {
+      const hierarchy = getProductTypeHierarchy()
+      const selectedProductTypes = filters.productType.length > 0 ? filters.productType : []
+      
+      // Get all available product types from data
+      const allProductTypesFromData = [...new Set(filteredData.map(d => d.productType))].filter(Boolean).sort()
+      
+      // Build a map of parent to children
+      const parentToChildren = new Map<string, string[]>()
+      hierarchy.forEach(item => {
+        const parent = item.mainCategory
+        const children = item.subCategories.map(sub => `${parent} - ${sub}`)
+        parentToChildren.set(parent, children)
+      })
+      
+      // Check if any selected product types are parents
+      const selectedParents = selectedProductTypes.filter(selected => parentToChildren.has(selected))
+      const selectedChildren = selectedProductTypes.filter(selected => !parentToChildren.has(selected))
+      
+      // If we have selected parents, create stacked bar chart data
+      // For now, handle single parent case - show stacked bar with its children
+      if (selectedParents.length === 1 && selectedChildren.length === 0) {
+        const parent = selectedParents[0]
+        const children = parentToChildren.get(parent)!
+        const validChildren = children.filter(child => allProductTypesFromData.includes(child))
+        
+        if (validChildren.length > 0) {
+          const yearChildMap = new Map<number, Map<string, number>>()
+          
+          filteredData.forEach(d => {
+            const productType = d.productType || ''
+            if (validChildren.includes(productType)) {
+              const year = d.year
+              if (!yearChildMap.has(year)) {
+                yearChildMap.set(year, new Map<string, number>())
+              }
+              const childMap = yearChildMap.get(year)!
+              childMap.set(productType, (childMap.get(productType) || 0) + getDataValue(d))
+            }
+          })
+          
+          const chartData = years.map(year => {
+            const entry: Record<string, number | string> = { year: String(year) }
+            const childMap = yearChildMap.get(year) || new Map<string, number>()
+            validChildren.forEach(child => {
+              entry[child] = childMap.get(child) || 0
+            })
+            return entry
+          })
+          
+          return {
+            chartData: [],
+            segments: [],
+            stackedChartData: chartData,
+            stackedSegments: validChildren,
+            isStacked: true
+          }
+        }
+      }
+      
+      // Default: grouped bar chart (no parents selected, or mixed selection)
+      let segmentsToShow: string[] = []
+      
+      if (selectedProductTypes.length > 0) {
+        selectedProductTypes.forEach(selected => {
+          // Check if this is a parent category
+          if (parentToChildren.has(selected)) {
+            // It's a parent - add its children instead (for grouped view)
+            const children = parentToChildren.get(selected)!
+            children.forEach(child => {
+              if (allProductTypesFromData.includes(child)) {
+                segmentsToShow.push(child)
+              }
+            })
+          } else {
+            // It's a child or standalone - add it directly
+            if (allProductTypesFromData.includes(selected)) {
+              segmentsToShow.push(selected)
+            }
+          }
+        })
+      } else {
+        // No selection - show all product types from data
+        segmentsToShow = allProductTypesFromData
+      }
+      
+      // Remove duplicates and sort
+      segmentsToShow = [...new Set(segmentsToShow)].sort()
+      
+      // Generate chart data
+      const segmentMap = new Map<string, number>()
+      
+      filteredData.forEach(d => {
+        const productType = d.productType || ''
+        if (segmentsToShow.includes(productType)) {
+          const key = `${d.year}-${productType}`
+          segmentMap.set(key, (segmentMap.get(key) || 0) + getDataValue(d))
+        }
+      })
+
+      const chartData = years.map((year) => {
+        const entry: Record<string, number | string> = { year: String(year) }
+        segmentsToShow.forEach((segment) => {
+          const key = `${year}-${segment}`
+          entry[segment] = segmentMap.get(key) || 0
+        })
+        return entry
+      })
+
+      return { 
+        chartData, 
+        segments: segmentsToShow,
+        stackedChartData: [],
+        stackedSegments: [],
+        isStacked: false
+      }
+    }
+    
+    const productTypeData = generateProductTypeChartData()
 
     // Blade Material Chart - use selected filters to show all selected options
     const bladeMaterialData = generateSegmentChartData(
@@ -632,6 +749,11 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
 
     return {
       productTypeChartData: productTypeData.chartData,
+      productTypeStackedData: { 
+        chartData: productTypeData.stackedChartData, 
+        segments: productTypeData.stackedSegments 
+      },
+      productTypeIsStacked: productTypeData.isStacked,
       bladeMaterialChartData: bladeMaterialData.chartData,
       handleLengthChartData: handleLengthData.chartData,
       applicationChartData: applicationData.chartData,
@@ -1615,9 +1737,9 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
                       </span>
                     </div>
                     <div>
-                      <span className="font-medium text-text-secondary-light dark:text-text-secondary-dark">Countries:</span>
+                      <span className="font-medium text-text-secondary-light dark:text-text-secondary-dark">Region:</span>
                       <span className="ml-2 font-semibold text-electric-blue dark:text-cyan-accent">
-                        {filters.country.length > 0 ? filters.country.join(', ') : 'All Countries'}
+                        {filters.country.length > 0 ? filters.country.join(', ') : 'All Regions'}
                       </span>
                     </div>
                     <div>
@@ -1657,7 +1779,8 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
               </div>
 
               {/* Graph 1: Market Size by Product Type */}
-          {analysisData.productTypeChartData.length > 0 && analysisData.productTypes && analysisData.productTypes.length > 0 && (
+          {((analysisData.productTypeChartData.length > 0 && analysisData.productTypes && analysisData.productTypes.length > 0) || 
+            (analysisData.productTypeIsStacked && analysisData.productTypeStackedData.chartData.length > 0 && analysisData.productTypeStackedData.segments.length > 0)) && (
             <div className="mb-20">
               <div className="mb-8">
                 <div className="flex items-center gap-3 mb-3">
@@ -1682,12 +1805,22 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
                   </p>
                 </div>
                 <div className="flex-1 flex items-center justify-center min-h-0 pt-2">
-                  <SegmentGroupedBarChart
-                    data={analysisData.productTypeChartData}
-                    segmentKeys={analysisData.productTypes}
-                    xAxisLabel="Year"
-                    yAxisLabel={getDataLabel()}
-                  />
+                  {analysisData.productTypeIsStacked && analysisData.productTypeStackedData.chartData.length > 0 ? (
+                    <CrossSegmentStackedBarChart
+                      data={analysisData.productTypeStackedData.chartData}
+                      dataKeys={analysisData.productTypeStackedData.segments}
+                      xAxisLabel="Year"
+                      yAxisLabel={getDataLabel()}
+                      nameKey="year"
+                    />
+                  ) : (
+                    <SegmentGroupedBarChart
+                      data={analysisData.productTypeChartData}
+                      segmentKeys={analysisData.productTypes}
+                      xAxisLabel="Year"
+                      yAxisLabel={getDataLabel()}
+                    />
+                  )}
                 </div>
               </div>
             </div>
