@@ -57,7 +57,7 @@ function App() {
     const titles: Record<string, string> = {
       'Home': 'Home',
       'MarketAnalysis': 'Market Analysis',
-      'CustomerIntelligence': 'Customer Sales Analysis',
+      'CustomerIntelligence': 'Company Sales Analysis',
       'Contact': 'Contact Us'
     }
     return titles[activePage] || 'Home'

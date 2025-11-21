@@ -108,6 +108,21 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
             distributionChannel: [],
             marketEvaluation: 'By Value',
           })
+          
+          // Initialize attractiveness filters with all regions and all product types by default
+          // Only set if filters are currently empty (first load)
+          setAttractivenessFilters(prev => ({
+            region: prev.region.length === 0 ? availableRegions : prev.region, // All regions selected by default
+            productType: prev.productType.length === 0 ? availableProductTypes : prev.productType, // All product types selected by default
+          }))
+          
+          // Initialize YoY/CAGR filters with all regions and all product types by default
+          // Only set if filters are currently empty (first load)
+          setYoyFilters(prev => ({
+            region: prev.region.length === 0 ? availableRegions : prev.region, // All regions selected by default
+            productType: prev.productType.length === 0 ? availableProductTypes : prev.productType, // All product types selected by default
+            country: [], // Country filter removed, keep empty
+          }))
         }, 0)
       } catch (error) {
         console.error('Error loading data:', error)
@@ -837,6 +852,8 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
         'Middle East': { cagr: 6.5, share: 3.2, opp: 1200 },
         'Latin America': { cagr: 4.2, share: 2.8, opp: 800 },
         'Africa': { cagr: 3.8, share: 1.9, opp: 400 },
+        'South India': { cagr: 6.0, share: 3.0, opp: 5000 },
+        'East India': { cagr: 2.5, share: 1.2, opp: 3000 },
       }
       
       const defaults = defaultValues[region] || { cagr: 5.0, share: 5.0, opp: 5000 }
@@ -844,10 +861,22 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
       // Use region name as display name
       const regionDisplayName = region
       
+      // Override with specific values for South India and East India
+      let finalCagrIndex = cagrIndex > 0 ? cagrIndex : defaults.cagr
+      let finalMarketShareIndex = marketShareIndex > 0 ? marketShareIndex : defaults.share
+      
+      if (region === 'South India') {
+        finalCagrIndex = 6.0
+        finalMarketShareIndex = 3.0
+      } else if (region === 'East India') {
+        finalCagrIndex = 2.5
+        finalMarketShareIndex = 1.2
+      }
+      
       return {
         region: regionDisplayName,
-        cagrIndex: cagrIndex > 0 ? cagrIndex : defaults.cagr,
-        marketShareIndex: marketShareIndex > 0 ? marketShareIndex : defaults.share,
+        cagrIndex: finalCagrIndex,
+        marketShareIndex: finalMarketShareIndex,
         incrementalOpportunity: incrementalOpportunity > 0 ? incrementalOpportunity : defaults.opp,
         description: regionDisplayName === 'Asia Pacific' 
           ? 'Asia Pacific are expected to dominate the Global Shovel Market from rapid industrialization, strong manufacturing capabilities, and robust construction and agricultural sectors that drive significant demand for high-quality shovels.'
@@ -855,9 +884,123 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
       }
     })
     
-    // If no regions in filtered data, return default regions
+    // Separate bubbles to prevent overlapping
+    // This function ensures minimum distance between bubble centers based on their sizes
+    const separateBubbleData = (data: typeof bubbleData) => {
+      if (data.length <= 1) return data
+      
+      const separated = data.map(d => ({ ...d }))
+      
+      // Calculate bubble sizes (same logic as in BubbleChart component)
+      const maxOpportunity = Math.max(...separated.map(d => d.incrementalOpportunity))
+      const minOpportunity = Math.min(...separated.map(d => d.incrementalOpportunity))
+      const sizeRange = maxOpportunity - minOpportunity
+      
+      const getBubbleSize = (opp: number) => {
+        return sizeRange > 0
+          ? 30 + ((opp - minOpportunity) / sizeRange) * 170
+          : 100
+      }
+      
+      // Minimum separation factor - ensure bubbles don't overlap
+      // Convert pixel size to data coordinate units
+      // Approximate: chart width ~500px, height ~350px for data range calculation
+      const cagrMin = Math.min(...separated.map(d => d.cagrIndex))
+      const cagrMax = Math.max(...separated.map(d => d.cagrIndex))
+      const shareMin = Math.min(...separated.map(d => d.marketShareIndex))
+      const shareMax = Math.max(...separated.map(d => d.marketShareIndex))
+      const cagrRange = cagrMax - cagrMin || 1
+      const shareRange = shareMax - shareMin || 1
+      
+      const estimatedChartWidth = 450
+      const estimatedChartHeight = 300
+      const pixelToDataX = cagrRange / estimatedChartWidth
+      const pixelToDataY = shareRange / estimatedChartHeight
+      const pixelToData = Math.max(pixelToDataX, pixelToDataY)
+      
+      const minSeparationFactor = 1.6 // 60% gap between bubbles
+      const maxIterations = 200
+      
+      for (let iteration = 0; iteration < maxIterations; iteration++) {
+        let hasOverlap = false
+        
+        for (let i = 0; i < separated.length; i++) {
+          for (let j = i + 1; j < separated.length; j++) {
+            const bubble1 = separated[i]
+            const bubble2 = separated[j]
+            
+            const dx = bubble2.cagrIndex - bubble1.cagrIndex
+            const dy = bubble2.marketShareIndex - bubble1.marketShareIndex
+            const distance = Math.sqrt(dx * dx + dy * dy)
+            
+            // Get bubble sizes
+            const size1 = getBubbleSize(bubble1.incrementalOpportunity)
+            const size2 = getBubbleSize(bubble2.incrementalOpportunity)
+            
+            // Convert radii to data coordinates
+            const radius1Data = (size1 / 2) * pixelToData
+            const radius2Data = (size2 / 2) * pixelToData
+            const requiredDistance = (radius1Data + radius2Data) * minSeparationFactor
+            
+            if (distance < requiredDistance && distance > 0.0001) {
+              hasOverlap = true
+              
+              // Calculate separation
+              const overlap = requiredDistance - distance
+              const damping = 0.5
+              const separationAmount = overlap * damping
+              
+              // Unit vector
+              const unitX = dx / distance
+              const unitY = dy / distance
+              
+              // Move bubbles apart (smaller moves more)
+              const totalSize = size1 + size2
+              const moveRatio1 = size2 / totalSize
+              const moveRatio2 = size1 / totalSize
+              
+              bubble1.cagrIndex -= unitX * separationAmount * moveRatio1
+              bubble1.marketShareIndex -= unitY * separationAmount * moveRatio1
+              bubble2.cagrIndex += unitX * separationAmount * moveRatio2
+              bubble2.marketShareIndex += unitY * separationAmount * moveRatio2
+              
+              // Keep within reasonable bounds
+              bubble1.cagrIndex = Math.max(0, Math.min(10, bubble1.cagrIndex))
+              bubble1.marketShareIndex = Math.max(0, Math.min(10, bubble1.marketShareIndex))
+              bubble2.cagrIndex = Math.max(0, Math.min(10, bubble2.cagrIndex))
+              bubble2.marketShareIndex = Math.max(0, Math.min(10, bubble2.marketShareIndex))
+            } else if (distance === 0 || (Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001)) {
+              // Handle exact overlap
+              hasOverlap = true
+              const overlapSize1 = getBubbleSize(bubble1.incrementalOpportunity)
+              const overlapSize2 = getBubbleSize(bubble2.incrementalOpportunity)
+              const avgRadius = ((overlapSize1 + overlapSize2) / 4) * pixelToData
+              const pushDistance = avgRadius * minSeparationFactor * 0.5
+              const angle = Math.random() * Math.PI * 2
+              
+              bubble1.cagrIndex -= Math.cos(angle) * pushDistance
+              bubble1.marketShareIndex -= Math.sin(angle) * pushDistance
+              bubble2.cagrIndex += Math.cos(angle) * pushDistance
+              bubble2.marketShareIndex += Math.sin(angle) * pushDistance
+              
+              bubble1.cagrIndex = Math.max(0, Math.min(10, bubble1.cagrIndex))
+              bubble1.marketShareIndex = Math.max(0, Math.min(10, bubble1.marketShareIndex))
+              bubble2.cagrIndex = Math.max(0, Math.min(10, bubble2.cagrIndex))
+              bubble2.marketShareIndex = Math.max(0, Math.min(10, bubble2.marketShareIndex))
+            }
+          }
+        }
+        
+        if (!hasOverlap) break
+      }
+      
+      return separated
+    }
+    
+    // Apply separation to bubble data
+    // If no regions in filtered data, return default regions (also separated)
     if (bubbleData.length === 0) {
-      return [
+      const defaultData = [
         {
           region: 'Asia Pacific',
           cagrIndex: 8.5,
@@ -870,35 +1013,56 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
           cagrIndex: 5.2,
           marketShareIndex: 6.8,
           incrementalOpportunity: 6800,
+          description: undefined,
         },
         {
           region: 'North America',
           cagrIndex: 5.8,
           marketShareIndex: 7.1,
           incrementalOpportunity: 7200,
+          description: undefined,
         },
         {
           region: 'Middle East',
           cagrIndex: 6.5,
           marketShareIndex: 3.2,
           incrementalOpportunity: 1200,
+          description: undefined,
         },
         {
           region: 'Latin America',
           cagrIndex: 4.2,
           marketShareIndex: 2.8,
           incrementalOpportunity: 800,
+          description: undefined,
         },
         {
           region: 'Africa',
           cagrIndex: 3.8,
           marketShareIndex: 1.9,
           incrementalOpportunity: 400,
+          description: undefined,
+        },
+        {
+          region: 'South India',
+          cagrIndex: 6.0,
+          marketShareIndex: 3.0,
+          incrementalOpportunity: 5000,
+          description: undefined,
+        },
+        {
+          region: 'East India',
+          cagrIndex: 2.5,
+          marketShareIndex: 1.2,
+          incrementalOpportunity: 3000,
+          description: undefined,
         },
       ]
+      return separateBubbleData(defaultData)
     }
     
-    return bubbleData
+    // Return separated bubble data
+    return separateBubbleData(bubbleData)
   }, [filteredAttractivenessData])
 
   // Get unique options for YoY filters
@@ -962,33 +1126,17 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
     if (yoyFilters.productType.length > 0) {
       filtered = filtered.filter(d => yoyFilters.productType.includes(d.productType))
     }
-    if (yoyFilters.country.length > 0) {
-      filtered = filtered.filter(d => yoyFilters.country.includes(d.country))
-    }
     
     return filtered
   }, [data, yoyFilters])
 
-  // YoY/CAGR Chart Data - Generate separate data for each country/region (no summation)
+  // YoY/CAGR Chart Data - Generate separate data for each region (no summation)
   const yoyCagrDataByEntity = useMemo(() => {
     // Determine which entities to create charts for
-    const entities: Array<{ type: 'country' | 'region', name: string, label: string }> = []
+    const entities: Array<{ type: 'region', name: string, label: string }> = []
     
-    // If countries are selected, create charts for each country
-    if (yoyFilters.country.length > 0) {
-      yoyFilters.country.forEach(country => {
-        // Find the region for this country
-        const countryData = filteredYoyData.find(d => d.country === country)
-        const region = countryData?.region || ''
-        entities.push({
-          type: 'country',
-          name: country,
-          label: `${country}${region ? ` (${region})` : ''}`
-        })
-      })
-    } 
-    // If only regions are selected (no countries), create charts for each region
-    else if (yoyFilters.region.length > 0) {
+    // Create charts for each selected region
+    if (yoyFilters.region.length > 0) {
       yoyFilters.region.forEach(region => {
         entities.push({
           type: 'region',
@@ -1006,14 +1154,8 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
     const entityDataMap = new Map<string, Array<{ year: string, yoy: number, cagr: number }>>()
     
     entities.forEach(entity => {
-      // Filter data for this specific entity
-      let entityFilteredData = filteredYoyData
-      
-      if (entity.type === 'country') {
-        entityFilteredData = entityFilteredData.filter(d => d.country === entity.name)
-      } else if (entity.type === 'region') {
-        entityFilteredData = entityFilteredData.filter(d => d.region === entity.name)
-      }
+      // Filter data for this specific region
+      const entityFilteredData = filteredYoyData.filter(d => d.region === entity.name)
       
       // Group data by year for this entity (no summation across entities)
       const yearDataMap = new Map<number, number>()
@@ -1073,7 +1215,7 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
       label,
       data
     }))
-  }, [filteredYoyData, yoyFilters.country, yoyFilters.region])
+  }, [filteredYoyData, yoyFilters.region])
 
   if (loading) {
     return (
@@ -1113,7 +1255,7 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
           </h1>
         </InfoTooltip>
         <p className="text-xl text-text-secondary-light dark:text-text-secondary-dark">
-          Market size and volume analysis by segments, countries, and years
+          Market size and volume analysis by segments and years
         </p>
       </motion.div>
 
@@ -1744,18 +1886,17 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
                     </h3>
                   </div>
                   <p className="text-base text-text-secondary-light dark:text-text-secondary-dark ml-4">
-                    Filter YoY and CAGR analysis data by region, product type, and country.
+                    Filter YoY and CAGR analysis data by region and product type.
                   </p>
                 </div>
                 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <FilterDropdown
                     label="Region"
                     value={yoyFilters.region}
                     onChange={(value) => {
                       const newRegions = value as string[]
-                      // Clear country selection when region changes to avoid invalid states
-                      setYoyFilters({ ...yoyFilters, region: newRegions, country: [] })
+                      setYoyFilters({ ...yoyFilters, region: newRegions })
                     }}
                     options={yoyFilterOptions.regions}
                   />
@@ -1765,16 +1906,6 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
                     onChange={(value) => setYoyFilters({ ...yoyFilters, productType: value as string[] })}
                     options={yoyFilterOptions.productTypes}
                   />
-                  <FilterDropdown
-                    label="Country"
-                    value={yoyFilters.country}
-                    onChange={(value) => setYoyFilters({ ...yoyFilters, country: value as string[] })}
-                    options={yoyFilterOptions.countries}
-                    optionLabels={yoyFilterOptions.countryOptions.reduce((acc, opt) => {
-                      acc[opt.value] = opt.label
-                      return acc
-                    }, {} as Record<string, string>)}
-                  />
                 </div>
               </div>
 
@@ -1782,14 +1913,14 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
                 <div className="mb-8">
                   <div className="flex items-center gap-3 mb-3">
                     <div className={`w-1 h-10 rounded-full ${isDark ? 'bg-cyan-accent' : 'bg-electric-blue'}`}></div>
-                    <InfoTooltip content="• Shows Year-over-Year (Y-o-Y) growth rate and Compound Annual Growth Rate (CAGR)\n• Toggle between Y-o-Y and CAGR views using the button\n• Y-o-Y shows year-to-year growth percentage\n• CAGR shows cumulative annual growth rate from the first year\n• Select regions or countries to generate separate charts for each (no summation)\n• Use filters to analyze specific regions, product types, or countries">
+                    <InfoTooltip content="• Shows Year-over-Year (Y-o-Y) growth rate and Compound Annual Growth Rate (CAGR)\n• Toggle between Y-o-Y and CAGR views using the button\n• Y-o-Y shows year-to-year growth percentage\n• CAGR shows cumulative annual growth rate from the first year\n• Select regions to generate separate charts for each (no summation)\n• Use filters to analyze specific regions and product types">
                       <h2 className="text-3xl font-bold text-text-primary-light dark:text-text-primary-dark cursor-help">
                         Year-over-Year (Y-o-Y) & CAGR Analysis
                       </h2>
                     </InfoTooltip>
                   </div>
                   <p className="text-base text-text-secondary-light dark:text-text-secondary-dark ml-4 mb-2">
-                    Growth rate analysis with toggle between Y-o-Y and CAGR metrics. Separate charts for each selected country/region.
+                    Growth rate analysis with toggle between Y-o-Y and CAGR metrics. Separate charts for each selected region.
                   </p>
                 </div>
                 
@@ -1797,7 +1928,7 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
                   <div className={`p-6 rounded-xl shadow-lg ${isDark ? 'bg-navy-card border-2 border-navy-light' : 'bg-white border-2 border-gray-200'}`}>
                     <div className="flex items-center justify-center h-[400px]">
                       <p className="text-text-secondary-light dark:text-text-secondary-dark text-lg">
-                        Please select at least one region or country to view the analysis
+                        Please select at least one region to view the analysis
                       </p>
                     </div>
                   </div>
