@@ -1900,11 +1900,11 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
                     }}
                     options={yoyFilterOptions.regions}
                   />
-                  <FilterDropdown
-                    label="Product Type"
+                  <HierarchicalFilterDropdown
+                    label="By Product Type"
                     value={yoyFilters.productType}
                     onChange={(value) => setYoyFilters({ ...yoyFilters, productType: value as string[] })}
-                    options={yoyFilterOptions.productTypes}
+                    hierarchy={getProductTypeHierarchy()}
                   />
                 </div>
               </div>
