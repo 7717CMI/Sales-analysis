@@ -27,8 +27,20 @@ interface BubbleChartProps {
   yAxisLabel?: string
 }
 
-// All bubbles use blue color with 3D effect (matching screenshot)
-const BUBBLE_COLOR = '#0075FF' // Blue color for all bubbles
+// Color palette for bubbles - blue for largest, different colors for others
+const BLUE_COLOR = '#0075FF' // Blue color for the largest bubble
+const COLOR_PALETTE = [
+  '#10B981', // Green
+  '#F59E0B', // Amber/Orange
+  '#EF4444', // Red
+  '#8B5CF6', // Purple
+  '#06B6D4', // Cyan
+  '#EC4899', // Pink
+  '#14B8A6', // Teal
+  '#F97316', // Orange
+  '#6366F1', // Indigo
+  '#84CC16', // Lime
+]
 
 export function BubbleChart({ 
   data, 
@@ -51,17 +63,42 @@ export function BubbleChart({
   const minOpportunity = Math.min(...data.map(d => d.incrementalOpportunity))
   const sizeRange = maxOpportunity - minOpportunity
 
+  // Create color map based on incremental opportunity (largest gets blue)
+  const colorMap = useMemo(() => {
+    const sortedData = [...data].sort((a, b) => b.incrementalOpportunity - a.incrementalOpportunity)
+    const map = new Map<string, string>()
+    
+    sortedData.forEach((item, index) => {
+      const key = `${item.region}-${item.cagrIndex}-${item.marketShareIndex}`
+      const bubbleColor = index === 0 
+        ? BLUE_COLOR 
+        : COLOR_PALETTE[(index - 1) % COLOR_PALETTE.length]
+      map.set(key, bubbleColor)
+    })
+    
+    return map
+  }, [data])
+
   const transformedData = useMemo(() => {
-    const initialData = data.map(item => {
+    // Sort data by incrementalOpportunity to identify the largest bubble
+    const sortedData = [...data].sort((a, b) => b.incrementalOpportunity - a.incrementalOpportunity)
+    
+    const initialData = sortedData.map((item, index) => {
       // Scale bubble size (min 30, max 200) - Recharts uses 'z' for bubble size
       const normalizedSize = sizeRange > 0
         ? 30 + ((item.incrementalOpportunity - minOpportunity) / sizeRange) * 170
         : 100
       
+      // Assign color: blue for largest (index 0), different colors for others
+      const bubbleColor = index === 0 
+        ? BLUE_COLOR 
+        : COLOR_PALETTE[(index - 1) % COLOR_PALETTE.length]
+      
       return {
         ...item,
         z: normalizedSize, // Recharts uses 'z' for bubble size
         size: normalizedSize, // Keep for custom shape
+        color: bubbleColor, // Assign color to each bubble
       }
     })
 
@@ -261,35 +298,51 @@ export function BubbleChart({
     return null
   }
 
-  // Custom shape for 3D bubbles - all blue with 3D effect
+  // Custom shape for 3D bubbles - each bubble has its own color
   const CustomShape = (props: any): JSX.Element => {
     const { cx, cy, payload } = props
     const region = payload?.region || 'Unknown'
     const size = payload?.size || 50
+    
+    // Get color from payload or colorMap
+    let bubbleColor = BLUE_COLOR
+    if (payload) {
+      // First try to get color from payload directly
+      if (payload.color) {
+        bubbleColor = payload.color
+      } else {
+        // Look up color from colorMap using region and coordinates
+        const key = `${payload.region}-${payload.cagrIndex}-${payload.marketShareIndex}`
+        const mappedColor = colorMap.get(key)
+        if (mappedColor) {
+          bubbleColor = mappedColor
+        }
+      }
+    }
     
     // Ensure cx and cy are valid numbers, default to 0 if not
     const x = typeof cx === 'number' ? cx : 0
     const y = typeof cy === 'number' ? cy : 0
     
     // Create unique ID for each bubble to avoid gradient conflicts
-    const bubbleId = `bubble-${region.replace(/\s+/g, '-').toLowerCase()}`
+    const bubbleId = `bubble-${region.replace(/\s+/g, '-').toLowerCase()}-${Math.random().toString(36).substr(2, 9)}`
     
     return (
       <g>
-        {/* Shadow for 3D effect */}
+        {/* Shadow for 3D effect - use a lighter shadow with the bubble color */}
         <circle
           cx={x}
-          cy={y + 3}
+          cy={y + 2}
           r={size / 2}
-          fill="rgba(0, 0, 0, 0.2)"
-          opacity={0.3}
+          fill={bubbleColor}
+          opacity={0.15}
         />
-        {/* Main bubble with gradient for 3D effect */}
+        {/* Main bubble with solid color and gradient for 3D effect */}
         <defs>
-          <radialGradient id={`gradient-${bubbleId}`}>
-            <stop offset="0%" stopColor={BUBBLE_COLOR} stopOpacity={1} />
-            <stop offset="50%" stopColor={BUBBLE_COLOR} stopOpacity={0.9} />
-            <stop offset="100%" stopColor={BUBBLE_COLOR} stopOpacity={0.7} />
+          <radialGradient id={`gradient-${bubbleId}`} cx="30%" cy="30%">
+            <stop offset="0%" stopColor={bubbleColor} stopOpacity={1} />
+            <stop offset="50%" stopColor={bubbleColor} stopOpacity={0.95} />
+            <stop offset="100%" stopColor={bubbleColor} stopOpacity={0.85} />
           </radialGradient>
           <filter id={`glow-${bubbleId}`}>
             <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
@@ -299,14 +352,16 @@ export function BubbleChart({
             </feMerge>
           </filter>
         </defs>
+        {/* Main bubble circle - use solid color with high opacity */}
         <circle
           cx={x}
           cy={y}
           r={size / 2}
-          fill={`url(#gradient-${bubbleId})`}
-          filter={`url(#glow-${bubbleId})`}
-          stroke={BUBBLE_COLOR}
-          strokeWidth={2}
+          fill={bubbleColor}
+          fillOpacity={0.85}
+          stroke={bubbleColor}
+          strokeWidth={2.5}
+          strokeOpacity={1}
           style={{
             transition: 'all 0.3s ease',
           }}
@@ -316,7 +371,7 @@ export function BubbleChart({
           cx={x - size / 6}
           cy={y - size / 6}
           r={size / 4}
-          fill="rgba(255, 255, 255, 0.4)"
+          fill="rgba(255, 255, 255, 0.5)"
         />
       </g>
     )
@@ -393,11 +448,11 @@ export function BubbleChart({
           <Scatter 
             name="Regions" 
             data={transformedData} 
-            fill={BUBBLE_COLOR}
+            fill={BLUE_COLOR}
             shape={CustomShape}
           >
             {transformedData.map((entry, index) => (
-              <Cell key={`cell-${index}`} fill={BUBBLE_COLOR} />
+              <Cell key={`cell-${index}`} fill={entry.color || BLUE_COLOR} />
             ))}
           </Scatter>
         </RechartsScatterChart>

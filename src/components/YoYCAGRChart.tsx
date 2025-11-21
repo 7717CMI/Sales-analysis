@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import {
   LineChart as RechartsLineChart,
   Line,
@@ -10,22 +10,25 @@ import {
   Legend,
 } from 'recharts'
 import { useTheme } from '../context/ThemeContext'
+import { getChartColors } from '../utils/chartColors'
 
 interface YoYCAGRChartProps {
   data: Array<{
     year: string
-    yoy: number
-    cagr: number
+    yoy?: number
+    cagr?: number
     [key: string]: any
   }>
   xAxisLabel?: string
   yAxisLabel?: string
+  segmentKeys?: string[] // Optional: for multiple segment lines
 }
 
 export function YoYCAGRChart({ 
   data, 
   xAxisLabel = 'Year', 
-  yAxisLabel = 'Growth Rate (%)'
+  yAxisLabel = 'Growth Rate (%)',
+  segmentKeys
 }: YoYCAGRChartProps) {
   const { theme } = useTheme()
   const isDark = theme === 'dark'
@@ -39,6 +42,23 @@ export function YoYCAGRChart({
     )
   }
 
+  // Determine data keys and colors based on whether we have segments
+  const { dataKeys, colors } = useMemo(() => {
+    if (segmentKeys && segmentKeys.length > 0) {
+      // Multiple segment lines
+      const suffix = showCAGR ? '_cagr' : '_yoy'
+      const keys = segmentKeys.map(key => `${key}${suffix}`)
+      const chartColors = getChartColors(segmentKeys.length)
+      return { dataKeys: keys, colors: chartColors }
+    } else {
+      // Single line (original behavior)
+      return {
+        dataKeys: showCAGR ? ['cagr'] : ['yoy'],
+        colors: showCAGR ? ['#4ECDC4'] : ['#0075FF']
+      }
+    }
+  }, [segmentKeys, showCAGR])
+
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       return (
@@ -48,19 +68,22 @@ export function YoYCAGRChart({
             : 'bg-white border-electric-blue text-gray-900'
         }`}>
           <p className="font-bold text-base mb-2">Year: {label}</p>
-          {payload.map((entry: any, index: number) => (
-            <p key={index} className="text-sm" style={{ color: entry.color }}>
-              <strong>{entry.name}:</strong> {entry.value.toFixed(2)}%
-            </p>
-          ))}
+          {payload.map((entry: any, index: number) => {
+            // Extract segment name from dataKey (remove _yoy or _cagr suffix)
+            const segmentName = segmentKeys && entry.dataKey 
+              ? entry.dataKey.replace(/_yoy$|_cagr$/, '')
+              : entry.name
+            return (
+              <p key={index} className="text-sm" style={{ color: entry.color }}>
+                <strong>{segmentName}:</strong> {entry.value.toFixed(2)}%
+              </p>
+            )
+          })}
         </div>
       )
     }
     return null
   }
-
-  const dataKeys = showCAGR ? ['cagr'] : ['yoy']
-  const colors = showCAGR ? ['#4ECDC4'] : ['#0075FF']
 
   return (
     <div className="relative w-full h-full">
@@ -168,18 +191,25 @@ export function YoYCAGRChart({
             }}
             iconSize={12}
           />
-          {dataKeys.map((key, index) => (
-            <Line
-              key={key}
-              type="monotone"
-              dataKey={key}
-              name={showCAGR ? 'CAGR (%)' : 'Y-o-Y Growth (%)'}
-              stroke={colors[index % colors.length]}
-              strokeWidth={3}
-              dot={{ r: 5 }}
-              activeDot={{ r: 7 }}
-            />
-          ))}
+          {dataKeys.map((key, index) => {
+            // Extract segment name for legend
+            const segmentName = segmentKeys && segmentKeys[index]
+              ? segmentKeys[index]
+              : (showCAGR ? 'CAGR (%)' : 'Y-o-Y Growth (%)')
+            
+            return (
+              <Line
+                key={key}
+                type="monotone"
+                dataKey={key}
+                name={segmentName}
+                stroke={colors[index % colors.length]}
+                strokeWidth={3}
+                dot={{ r: 5 }}
+                activeDot={{ r: 7 }}
+              />
+            )
+          })}
         </RechartsLineChart>
       </ResponsiveContainer>
     </div>

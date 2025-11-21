@@ -58,7 +58,8 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
   // Separate filters for YoY/CAGR tab
   const [yoyFilters, setYoyFilters] = useState({
     region: [] as string[],
-    productType: [] as string[],
+    segmentType: '' as string,
+    segmentValues: [] as string[],
     country: [] as string[],
   })
 
@@ -118,11 +119,12 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
             segmentValues: prev.segmentValues || [], // No segment values selected by default
           }))
           
-          // Initialize YoY/CAGR filters with all regions and all product types by default
+          // Initialize YoY/CAGR filters with all regions by default
           // Only set if filters are currently empty (first load)
           setYoyFilters(prev => ({
             region: prev.region.length === 0 ? availableRegions : prev.region, // All regions selected by default
-            productType: prev.productType.length === 0 ? availableProductTypes : prev.productType, // All product types selected by default
+            segmentType: prev.segmentType || '', // No segment selected by default
+            segmentValues: prev.segmentValues || [], // No segment values selected by default
             country: [], // Country filter removed, keep empty
           }))
         }, 0)
@@ -1030,106 +1032,252 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
       years: number[]
     }>()
     
-    if (segmentType && segmentValues.length > 0) {
-      // Group by sub-segments of the selected segment type
-      filteredAttractivenessData.forEach(d => {
-        let entityKey = ''
+    if (segmentType === 'productType') {
+      // Special handling for Product Type
+      const hierarchy = getProductTypeHierarchy()
+      const mainCategories = hierarchy.map(item => item.mainCategory)
+      
+      if (segmentValues.length === 0) {
+        // No specific selection - show all 5 main categories as bubbles
+        // Aggregate data for all children of each main category (exclude parent itself)
+        mainCategories.forEach(mainCategory => {
+          const children = hierarchy.find(item => item.mainCategory === mainCategory)?.subCategories || []
+          const childProductTypes = children.map(child => `${mainCategory} - ${child}`)
+          
+          filteredAttractivenessData.forEach(d => {
+            const productType = d.productType || ''
+            // Only include children's data, NOT the parent itself
+            if (childProductTypes.includes(productType)) {
+              if (!entityDataMap.has(mainCategory)) {
+                entityDataMap.set(mainCategory, { values: [], volumes: [], years: [] })
+              }
+              
+              const entityData = entityDataMap.get(mainCategory)!
+              const value = (d.marketValueUsd || 0) / 1000
+              entityData.values.push(value)
+              entityData.volumes.push(d.volumeUnits || 0)
+              entityData.years.push(d.year)
+            }
+          })
+        })
+      } else {
+        // Specific product types selected
+        // Check if any selected values are main categories (parents)
+        const selectedParents = segmentValues.filter(val => mainCategories.includes(val))
+        const selectedChildren = segmentValues.filter(val => !mainCategories.includes(val))
         
-        switch (segmentType) {
-          case 'productType':
-            entityKey = d.productType || ''
-            break
-          case 'bladeMaterial':
-            entityKey = d.bladeMaterial || ''
-            break
-          case 'handleLength':
-            entityKey = d.handleLength || ''
-            break
-          case 'application':
-            entityKey = d.application || ''
-            break
-          case 'endUser':
-            entityKey = d.endUser || ''
-            break
-          case 'distributionChannelType':
-            entityKey = d.distributionChannelType || ''
-            break
+        if (selectedParents.length > 0) {
+          // Show children of selected parents, NOT the parents themselves
+          selectedParents.forEach(parent => {
+            const children = hierarchy.find(item => item.mainCategory === parent)?.subCategories || []
+            const childProductTypes = children.map(child => `${parent} - ${child}`)
+            
+            childProductTypes.forEach(childProductType => {
+              filteredAttractivenessData.forEach(d => {
+                const productType = d.productType || ''
+                if (productType === childProductType) {
+                  if (!entityDataMap.has(childProductType)) {
+                    entityDataMap.set(childProductType, { values: [], volumes: [], years: [] })
+                  }
+                  
+                  const entityData = entityDataMap.get(childProductType)!
+                  const value = (d.marketValueUsd || 0) / 1000
+                  entityData.values.push(value)
+                  entityData.volumes.push(d.volumeUnits || 0)
+                  entityData.years.push(d.year)
+                }
+              })
+            })
+          })
         }
         
-        if (!entityKey) return
-        
-        // Get all sub-elements for hierarchical segments
-        let allSegmentValues = [...segmentValues]
-        
-        // For Product Type, expand hierarchical values to include all sub-items
-        if (segmentType === 'productType') {
-          const hierarchy = getProductTypeHierarchy()
-          const expandedValues = new Set<string>(segmentValues)
-          
-          const findChildren = (items: any[]) => {
-            items.forEach(item => {
-              if (segmentValues.includes(item.value)) {
-                if (item.children) {
-                  item.children.forEach((child: any) => {
-                    expandedValues.add(child.value)
-                    if (child.children) {
-                      findChildren(child.children)
-                    }
-                  })
+        // Also include directly selected children (if any)
+        if (selectedChildren.length > 0) {
+          selectedChildren.forEach(childProductType => {
+            filteredAttractivenessData.forEach(d => {
+              const productType = d.productType || ''
+              if (productType === childProductType) {
+                if (!entityDataMap.has(childProductType)) {
+                  entityDataMap.set(childProductType, { values: [], volumes: [], years: [] })
                 }
-              } else if (item.children) {
-                findChildren(item.children)
+                
+                const entityData = entityDataMap.get(childProductType)!
+                const value = (d.marketValueUsd || 0) / 1000
+                entityData.values.push(value)
+                entityData.volumes.push(d.volumeUnits || 0)
+                entityData.years.push(d.year)
               }
             })
+          })
+        }
+      }
+    } else if (segmentType === 'distributionChannelType') {
+      // Special handling for Sales Channel
+      const hierarchy = getSalesChannelHierarchy()
+      const mainCategories = hierarchy.map(item => item.mainCategory)
+      
+      // Helper function to extract all children from nested structure
+      const getAllChildren = (item: any, parentPath: string = ''): string[] => {
+        const children: string[] = []
+        
+        if (typeof item === 'string') {
+          // Simple string child - format as "Parent - Child"
+          children.push(parentPath ? `${parentPath} - ${item}` : item)
+        } else if (item && typeof item === 'object' && item.name) {
+          // Nested object with name - format as "Parent - Name"
+          const currentPath = parentPath ? `${parentPath} - ${item.name}` : item.name
+          
+          if (item.children && Array.isArray(item.children)) {
+            // Has nested children - recurse
+            item.children.forEach((child: any) => {
+              children.push(...getAllChildren(child, currentPath))
+            })
+          } else {
+            // Leaf node - just the name with parent path
+            children.push(currentPath)
           }
-          findChildren(hierarchy)
-          allSegmentValues = Array.from(expandedValues)
         }
         
-        // For Sales Channel, expand hierarchical values
-        if (segmentType === 'distributionChannelType') {
-          const hierarchy = getSalesChannelHierarchy()
-          const expandedValues = new Set<string>(segmentValues)
+        return children
+      }
+      
+      if (segmentValues.length === 0) {
+        // No specific selection - show all 3 main categories as bubbles
+        mainCategories.forEach(mainCategory => {
+          const hierarchyItem = hierarchy.find(item => item.mainCategory === mainCategory)
+          if (!hierarchyItem) return
           
-          const findChildren = (items: any[]) => {
-            items.forEach(item => {
-              if (segmentValues.includes(item.value)) {
-                if (item.children) {
-                  item.children.forEach((child: any) => {
-                    expandedValues.add(child.value)
-                    if (child.children) {
-                      findChildren(child.children)
-                    }
-                  })
+          // Get all children (including nested ones)
+          const allChildren: string[] = []
+          hierarchyItem.subCategories.forEach((sub: any) => {
+            allChildren.push(...getAllChildren(sub, mainCategory))
+          })
+          
+          filteredAttractivenessData.forEach(d => {
+            const channelType = d.distributionChannelType || ''
+            // Only include children's data, NOT the parent itself
+            if (allChildren.includes(channelType)) {
+              if (!entityDataMap.has(mainCategory)) {
+                entityDataMap.set(mainCategory, { values: [], volumes: [], years: [] })
+              }
+              
+              const entityData = entityDataMap.get(mainCategory)!
+              const value = (d.marketValueUsd || 0) / 1000
+              entityData.values.push(value)
+              entityData.volumes.push(d.volumeUnits || 0)
+              entityData.years.push(d.year)
+            }
+          })
+        })
+      } else {
+        // Specific sales channels selected
+        // Check if any selected values are main categories (parents)
+        const selectedParents = segmentValues.filter(val => mainCategories.includes(val))
+        const selectedChildren = segmentValues.filter(val => !mainCategories.includes(val))
+        
+        if (selectedParents.length > 0) {
+          // Show children of selected parents, NOT the parents themselves
+          selectedParents.forEach(parent => {
+            const hierarchyItem = hierarchy.find(item => item.mainCategory === parent)
+            if (!hierarchyItem) return
+            
+            // Get all children (including nested ones)
+            const allChildren: string[] = []
+            hierarchyItem.subCategories.forEach((sub: any) => {
+              allChildren.push(...getAllChildren(sub, parent))
+            })
+            
+            allChildren.forEach(childChannelType => {
+              filteredAttractivenessData.forEach(d => {
+                const channelType = d.distributionChannelType || ''
+                if (channelType === childChannelType) {
+                  if (!entityDataMap.has(childChannelType)) {
+                    entityDataMap.set(childChannelType, { values: [], volumes: [], years: [] })
+                  }
+                  
+                  const entityData = entityDataMap.get(childChannelType)!
+                  const value = (d.marketValueUsd || 0) / 1000
+                  entityData.values.push(value)
+                  entityData.volumes.push(d.volumeUnits || 0)
+                  entityData.years.push(d.year)
                 }
-              } else if (item.children) {
-                findChildren(item.children)
+              })
+            })
+          })
+        }
+        
+        // Also include directly selected children (if any)
+        if (selectedChildren.length > 0) {
+          selectedChildren.forEach(childChannelType => {
+            filteredAttractivenessData.forEach(d => {
+              const channelType = d.distributionChannelType || ''
+              if (channelType === childChannelType) {
+                if (!entityDataMap.has(childChannelType)) {
+                  entityDataMap.set(childChannelType, { values: [], volumes: [], years: [] })
+                }
+                
+                const entityData = entityDataMap.get(childChannelType)!
+                const value = (d.marketValueUsd || 0) / 1000
+                entityData.values.push(value)
+                entityData.volumes.push(d.volumeUnits || 0)
+                entityData.years.push(d.year)
               }
             })
+          })
+        }
+      }
+    } else if (segmentType) {
+      // Handle other segment types (bladeMaterial, handleLength, application, endUser)
+      let entityKey = ''
+      let getEntityValue: ((d: any) => string) | null = null
+      
+      switch (segmentType) {
+        case 'bladeMaterial':
+          getEntityValue = (d) => d.bladeMaterial || ''
+          break
+        case 'handleLength':
+          getEntityValue = (d) => d.handleLength || ''
+          break
+        case 'application':
+          getEntityValue = (d) => d.application || ''
+          break
+        case 'endUser':
+          getEntityValue = (d) => d.endUser || ''
+          break
+      }
+      
+      if (getEntityValue) {
+        // Get all available values for this segment type from filtered data
+        const allAvailableValues = [...new Set(filteredAttractivenessData.map(getEntityValue))].filter(Boolean).sort()
+        
+        // Determine which values to show
+        const valuesToShow = segmentValues.length > 0 
+          ? segmentValues.filter(val => allAvailableValues.includes(val))
+          : allAvailableValues // Show all if no specific selection
+        
+        // Group data by segment values
+        filteredAttractivenessData.forEach(d => {
+          entityKey = getEntityValue!(d)
+          
+          if (!entityKey || !valuesToShow.includes(entityKey)) return
+          
+          if (!entityDataMap.has(entityKey)) {
+            entityDataMap.set(entityKey, { values: [], volumes: [], years: [] })
           }
-          findChildren(hierarchy)
-          allSegmentValues = Array.from(expandedValues)
-        }
-        
-        // Only include entities that match the selected segment values
-        if (!allSegmentValues.includes(entityKey)) return
-        
-        if (!entityDataMap.has(entityKey)) {
-          entityDataMap.set(entityKey, { values: [], volumes: [], years: [] })
-        }
-        
-        const entityData = entityDataMap.get(entityKey)!
-        const value = (d.marketValueUsd || 0) / 1000 // Convert to millions
-        entityData.values.push(value)
-        entityData.volumes.push(d.volumeUnits || 0)
-        entityData.years.push(d.year)
-      })
+          
+          const entityData = entityDataMap.get(entityKey)!
+          const value = (d.marketValueUsd || 0) / 1000 // Convert to millions
+          entityData.values.push(value)
+          entityData.volumes.push(d.volumeUnits || 0)
+          entityData.years.push(d.year)
+        })
+      }
     } else {
       // Group by region (default behavior) - only India regions
-      filteredAttractivenessData.forEach(d => {
-        const region = d.region
-        if (!region) return
-        
+    filteredAttractivenessData.forEach(d => {
+      const region = d.region
+      if (!region) return
+      
         // Only include India regions
         const indiaRegions = ['North India', 'South India', 'East India', 'West India', 'Central India']
         if (!indiaRegions.includes(region)) return
@@ -1139,11 +1287,11 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
         }
         
         const regionData = entityDataMap.get(region)!
-        const value = (d.marketValueUsd || 0) / 1000 // Convert to millions
-        regionData.values.push(value)
-        regionData.volumes.push(d.volumeUnits || 0)
-        regionData.years.push(d.year)
-      })
+      const value = (d.marketValueUsd || 0) / 1000 // Convert to millions
+      regionData.values.push(value)
+      regionData.volumes.push(d.volumeUnits || 0)
+      regionData.years.push(d.year)
+    })
     }
     
     // Calculate CAGR Index and Market Share Index for each entity
@@ -1191,6 +1339,7 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
       const displayName = entity
       
       // Override with specific values for South India and East India (only if grouping by region)
+      // Override for Offline Retail (when grouping by sales channel)
       let finalCagrIndex = cagrIndex > 0 ? cagrIndex : (segmentType ? 5.0 : defaults.cagr)
       let finalMarketShareIndex = marketShareIndex > 0 ? marketShareIndex : (segmentType ? 5.0 : defaults.share)
       
@@ -1200,6 +1349,9 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
       } else if (!segmentType && entity === 'East India') {
         finalCagrIndex = 2.5
         finalMarketShareIndex = 1.2
+      } else if (segmentType === 'distributionChannelType' && entity === 'Offline Retail') {
+        finalCagrIndex = 7.0
+        finalMarketShareIndex = 9.0
       }
       
       // Use calculated incremental opportunity if available, otherwise use randomized value
@@ -1441,19 +1593,421 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
     if (yoyFilters.region.length > 0) {
       filtered = filtered.filter(d => yoyFilters.region.includes(d.region))
     }
-    if (yoyFilters.productType.length > 0) {
-      filtered = filtered.filter(d => yoyFilters.productType.includes(d.productType))
+    
+    // Filter by selected segment type and values
+    if (yoyFilters.segmentType && yoyFilters.segmentValues.length > 0) {
+      const segmentType = yoyFilters.segmentType
+      const segmentValues = yoyFilters.segmentValues
+      
+      // Get all sub-elements for hierarchical segments
+      let allSegmentValues = [...segmentValues]
+      
+      // For Product Type, expand hierarchical values to include all sub-items
+      if (segmentType === 'productType') {
+        const hierarchy = getProductTypeHierarchy()
+        const expandedValues = new Set<string>(segmentValues)
+        
+        // Recursively find all children of selected items
+        const findChildren = (items: any[]) => {
+          items.forEach(item => {
+            if (segmentValues.includes(item.value)) {
+              if (item.children) {
+                item.children.forEach((child: any) => {
+                  expandedValues.add(child.value)
+                  if (child.children) {
+                    findChildren(child.children)
+                  }
+                })
+              }
+            } else if (item.children) {
+              findChildren(item.children)
+            }
+          })
+        }
+        findChildren(hierarchy)
+        allSegmentValues = Array.from(expandedValues)
+      }
+      
+      // For Sales Channel, expand hierarchical values
+      if (segmentType === 'distributionChannelType') {
+        const hierarchy = getSalesChannelHierarchy()
+        const expandedValues = new Set<string>(segmentValues)
+        
+        const findChildren = (items: any[]) => {
+          items.forEach(item => {
+            if (segmentValues.includes(item.value)) {
+              if (item.children) {
+                item.children.forEach((child: any) => {
+                  expandedValues.add(child.value)
+                  if (child.children) {
+                    findChildren(child.children)
+                  }
+                })
+              }
+            } else if (item.children) {
+              findChildren(item.children)
+            }
+          })
+        }
+        findChildren(hierarchy)
+        allSegmentValues = Array.from(expandedValues)
+      }
+      
+      // Apply filter based on segment type
+      filtered = filtered.filter(d => {
+        switch (segmentType) {
+          case 'productType':
+            return allSegmentValues.includes(d.productType || '')
+          case 'bladeMaterial':
+            return allSegmentValues.includes(d.bladeMaterial || '')
+          case 'handleLength':
+            return allSegmentValues.includes(d.handleLength || '')
+          case 'application':
+            return allSegmentValues.includes(d.application || '')
+          case 'endUser':
+            return allSegmentValues.includes(d.endUser || '')
+          case 'distributionChannelType':
+            return allSegmentValues.includes(d.distributionChannelType || '')
+          default:
+            return true
+        }
+      })
     }
     
     return filtered
   }, [data, yoyFilters])
 
-  // YoY/CAGR Chart Data - Generate separate data for each region (no summation)
+  // YoY/CAGR Chart Data - Generate data based on segment or region
   const yoyCagrDataByEntity = useMemo(() => {
-    // Determine which entities to create charts for
+    // If segment type is selected, create ONE chart with lines for each segment value
+    if (yoyFilters.segmentType) {
+      const segmentType = yoyFilters.segmentType
+      
+      // Get segment values - if none selected, get all available values for this segment type
+      let segmentValues = yoyFilters.segmentValues.length > 0 
+        ? yoyFilters.segmentValues 
+        : []
+      
+      // Get all segment values to display (handles hierarchical segments)
+      let allSegmentValues: string[] = []
+      let parentToChildrenMap = new Map<string, string[]>() // Map parent to its children
+      
+      // Handle hierarchical segments (Product Type and Sales Channel)
+      if (segmentType === 'productType') {
+        const hierarchy = getProductTypeHierarchy()
+        
+        // Build parent-to-children map
+        hierarchy.forEach(item => {
+          parentToChildrenMap.set(item.mainCategory, item.subCategories)
+        })
+        
+        // If no segment values selected, show only top-level parents
+        if (segmentValues.length === 0) {
+          allSegmentValues = hierarchy.map(item => item.mainCategory)
+        } else {
+          // Check if any selected values are parents
+          const selectedParents = segmentValues.filter(val => parentToChildrenMap.has(val))
+          
+          if (selectedParents.length > 0) {
+            // If parents are selected, show only their children (not the parents themselves)
+            const childrenSet = new Set<string>()
+            selectedParents.forEach(parent => {
+              const children = parentToChildrenMap.get(parent) || []
+              children.forEach(child => childrenSet.add(child))
+            })
+            // Also include any selected values that are not parents (leaf nodes)
+            segmentValues.forEach(val => {
+              if (!parentToChildrenMap.has(val)) {
+                childrenSet.add(val)
+              }
+            })
+            allSegmentValues = Array.from(childrenSet)
+          } else {
+            // Only leaf nodes selected, use them as is
+            allSegmentValues = segmentValues
+          }
+        }
+      } else if (segmentType === 'distributionChannelType') {
+        const hierarchy = getSalesChannelHierarchy()
+        
+        // Build parent-to-children map (handle nested structure)
+        const extractChildren = (subCategories: (string | { name: string; children?: string[] })[]): string[] => {
+          const children: string[] = []
+          subCategories.forEach(sub => {
+            if (typeof sub === 'string') {
+              children.push(sub)
+            } else {
+              children.push(sub.name)
+              if (sub.children) {
+                children.push(...sub.children)
+              }
+            }
+          })
+          return children
+        }
+        
+        hierarchy.forEach(item => {
+          const children = extractChildren(item.subCategories)
+          parentToChildrenMap.set(item.mainCategory, children)
+        })
+        
+        // If no segment values selected, show only top-level parents
+        if (segmentValues.length === 0) {
+          allSegmentValues = hierarchy.map(item => item.mainCategory)
+        } else {
+          // Check if any selected values are parents
+          const selectedParents = segmentValues.filter(val => parentToChildrenMap.has(val))
+          
+          if (selectedParents.length > 0) {
+            // If parents are selected, show only their children (not the parents themselves)
+            const childrenSet = new Set<string>()
+            selectedParents.forEach(parent => {
+              const children = parentToChildrenMap.get(parent) || []
+              children.forEach(child => childrenSet.add(child))
+            })
+            // Also include any selected values that are not parents (leaf nodes)
+            segmentValues.forEach(val => {
+              if (!parentToChildrenMap.has(val)) {
+                childrenSet.add(val)
+              }
+            })
+            allSegmentValues = Array.from(childrenSet)
+          } else {
+            // Only leaf nodes selected, use them as is
+            allSegmentValues = segmentValues
+          }
+        }
+      } else {
+        // Non-hierarchical segments - if no values selected, get all available from data
+        if (segmentValues.length === 0) {
+          const segmentValueSet = new Set<string>()
+          filteredYoyData.forEach(d => {
+            let value: string | null = null
+            switch (segmentType) {
+              case 'bladeMaterial': value = d.bladeMaterial; break
+              case 'handleLength': value = d.handleLength; break
+              case 'application': value = d.application; break
+              case 'endUser': value = d.endUser; break
+            }
+            if (value) segmentValueSet.add(value)
+          })
+          allSegmentValues = Array.from(segmentValueSet)
+        } else {
+          allSegmentValues = segmentValues
+        }
+      }
+      
+      if (allSegmentValues.length === 0) {
+        return []
+      }
+      
+      // Get segment field name
+      const getSegmentField = (d: any) => {
+        switch (segmentType) {
+          case 'productType': return d.productType
+          case 'bladeMaterial': return d.bladeMaterial
+          case 'handleLength': return d.handleLength
+          case 'application': return d.application
+          case 'endUser': return d.endUser
+          case 'distributionChannelType': return d.distributionChannelType
+          default: return null
+        }
+      }
+      
+      // Get all unique years from filtered data
+      const yearSet = new Set<number>()
+      filteredYoyData.forEach(d => {
+        const fieldValue = getSegmentField(d)
+        if (!fieldValue) return
+        
+        // Check if this data point belongs to any of the segment values to display
+        allSegmentValues.forEach(segmentValue => {
+          const isParent = parentToChildrenMap.has(segmentValue)
+          
+          if (isParent && (segmentType === 'productType' || segmentType === 'distributionChannelType')) {
+            // Check if it's the parent itself or a child of the parent
+            if (fieldValue === segmentValue) {
+              yearSet.add(d.year)
+              return
+            }
+            
+            const children = parentToChildrenMap.get(segmentValue) || []
+            const prefix = `${segmentValue} - `
+            if (fieldValue.startsWith(prefix)) {
+              const childPart = fieldValue.substring(prefix.length)
+              if (children.includes(childPart)) {
+                yearSet.add(d.year)
+                return
+              }
+            }
+            
+            if (children.includes(fieldValue)) {
+              yearSet.add(d.year)
+              return
+            }
+          } else {
+            // Leaf node - check for exact match or "Parent - Child" format
+            if (fieldValue === segmentValue) {
+              yearSet.add(d.year)
+              return
+            }
+            
+            if (fieldValue.includes(' - ')) {
+              const parts = fieldValue.split(' - ')
+              const childPart = parts[parts.length - 1]
+              if (childPart === segmentValue) {
+                yearSet.add(d.year)
+                return
+              }
+            }
+          }
+        })
+      })
+      const years = Array.from(yearSet).sort()
+      
+      if (years.length < 2) {
+        return []
+      }
+      
+      // Generate data for each segment value
+      const segmentDataMap = new Map<string, Array<{ year: string, yoy: number, cagr: number }>>()
+      
+      allSegmentValues.forEach(segmentValue => {
+        // Check if this is a parent category (for hierarchical segments)
+        const isParent = parentToChildrenMap.has(segmentValue)
+        let segmentFilteredData: typeof filteredYoyData = []
+        
+        if (isParent && (segmentType === 'productType' || segmentType === 'distributionChannelType')) {
+          // If it's a parent, aggregate data from all its children
+          // Data format is "Parent - Child" or just "Parent" for parent categories
+          const children = parentToChildrenMap.get(segmentValue) || []
+          segmentFilteredData = filteredYoyData.filter(d => {
+            const fieldValue = getSegmentField(d)
+            if (!fieldValue) return false
+            
+            // Check if it's the parent itself (exact match)
+            if (fieldValue === segmentValue) return true
+            
+            // Check if it starts with "Parent - " and the child part matches any child
+            const prefix = `${segmentValue} - `
+            if (fieldValue.startsWith(prefix)) {
+              const childPart = fieldValue.substring(prefix.length).trim()
+              // Check exact match or if any child is contained in the childPart
+              return children.some(child => {
+                const trimmedChild = child.trim()
+                return childPart === trimmedChild || childPart.includes(trimmedChild) || trimmedChild.includes(childPart)
+              })
+            }
+            
+            // Also check if it's a direct child match (for cases where data might just have child name)
+            return children.some(child => fieldValue === child.trim() || fieldValue.includes(child.trim()))
+          })
+        } else {
+          // If it's a leaf node, filter by the segment value directly
+          // Also check if it's in the format "Parent - Child" where Child matches
+          segmentFilteredData = filteredYoyData.filter(d => {
+            const fieldValue = getSegmentField(d)
+            if (!fieldValue) return false
+            
+            // Exact match
+            if (fieldValue === segmentValue) return true
+            
+            // Check if it's in "Parent - Child" format where Child matches
+            if (fieldValue.includes(' - ')) {
+              const parts = fieldValue.split(' - ')
+              const childPart = parts[parts.length - 1]
+              return childPart === segmentValue
+            }
+            
+            return false
+          })
+        }
+        
+        // Group data by year
+        const yearDataMap = new Map<number, number>()
+        segmentFilteredData.forEach(d => {
+          const year = d.year
+          const value = (d.marketValueUsd || 0) / 1000 // Convert to millions
+          yearDataMap.set(year, (yearDataMap.get(year) || 0) + value)
+        })
+        
+        // Calculate YoY and CAGR for each year
+        const chartData = years.map((year, index) => {
+          const currentValue = yearDataMap.get(year) || 0
+          
+          // Calculate YoY
+          let yoy = 0
+          if (index > 0) {
+            const previousYear = years[index - 1]
+            const previousValue = yearDataMap.get(previousYear) || 0
+            if (previousValue > 0) {
+              yoy = ((currentValue - previousValue) / previousValue) * 100
+            }
+          }
+          
+          // Calculate CAGR
+          let cagr = 0
+          if (index > 0) {
+            const firstYear = years[0]
+            const firstValue = yearDataMap.get(firstYear) || 0
+            if (firstValue > 0 && currentValue > 0) {
+              const yearsDiff = year - firstYear
+              if (yearsDiff > 0) {
+                cagr = (Math.pow(currentValue / firstValue, 1 / yearsDiff) - 1) * 100
+              }
+            }
+          }
+          
+          return {
+            year: String(year),
+            yoy: yoy,
+            cagr: cagr,
+          }
+        })
+        
+        segmentDataMap.set(segmentValue, chartData)
+      })
+      
+      // Transform data to have one object per year with all segment values as properties
+      const transformedData: Array<Record<string, any>> = []
+      
+      years.forEach(year => {
+        const yearData: Record<string, any> = { year: String(year) }
+        
+        allSegmentValues.forEach(segmentValue => {
+          const segmentData = segmentDataMap.get(segmentValue)
+          if (segmentData) {
+            const yearEntry = segmentData.find(d => d.year === String(year))
+            if (yearEntry) {
+              yearData[`${segmentValue}_yoy`] = yearEntry.yoy
+              yearData[`${segmentValue}_cagr`] = yearEntry.cagr
+            } else {
+              yearData[`${segmentValue}_yoy`] = 0
+              yearData[`${segmentValue}_cagr`] = 0
+            }
+          }
+        })
+        
+        transformedData.push(yearData)
+      })
+      
+      // Return ONE chart with all segment values as lines
+      return [{
+        label: segmentType === 'productType' ? 'By Product Type' :
+               segmentType === 'bladeMaterial' ? 'By Product Form' :
+               segmentType === 'handleLength' ? 'By Price Range' :
+               segmentType === 'application' ? 'By Age Group' :
+               segmentType === 'endUser' ? 'By Profession' :
+               segmentType === 'distributionChannelType' ? 'By Sales Channel' :
+               'By Segment',
+        data: transformedData,
+        segmentKeys: allSegmentValues // Store segment keys for rendering multiple lines
+      }]
+    }
+    
+    // If no segment selected, show separate charts for each region (original behavior)
     const entities: Array<{ type: 'region', name: string, label: string }> = []
     
-    // Create charts for each selected region
     if (yoyFilters.region.length > 0) {
       yoyFilters.region.forEach(region => {
         entities.push({
@@ -1462,9 +2016,7 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
           label: region
         })
       })
-    }
-    // If nothing is selected, return empty array
-    else {
+    } else {
       return []
     }
     
@@ -1533,7 +2085,7 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
       label,
       data
     }))
-  }, [filteredYoyData, yoyFilters.region])
+  }, [filteredYoyData, yoyFilters.region, yoyFilters.segmentType, yoyFilters.segmentValues])
 
   if (loading) {
     return (
@@ -1573,7 +2125,7 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
           </h1>
         </InfoTooltip>
         <p className="text-xl text-text-secondary-light dark:text-text-secondary-dark">
-          Market size and volume analysis by segments and years
+          Market Analysis By Segments and Years
         </p>
       </motion.div>
 
@@ -1778,6 +2330,28 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
                 </div>
               </div>
 
+              {/* Message when filters return no data */}
+              {filteredData.length === 0 && data.length > 0 && (
+                <div className={`p-6 rounded-xl shadow-lg mb-8 ${isDark ? 'bg-yellow-900/20 border-2 border-yellow-600' : 'bg-yellow-50 border-2 border-yellow-300'}`}>
+                  <div className="flex items-start gap-3">
+                    <div className="text-yellow-600 dark:text-yellow-400 mt-1">
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold text-yellow-800 dark:text-yellow-300 mb-2">
+                        No Data Matches Your Filters
+                      </h3>
+                      <p className="text-yellow-700 dark:text-yellow-400">
+                        The selected filters are too restrictive and return no data. Please adjust your filters (Year, Region, Product Type, etc.) to see visualizations. 
+                        Try clearing some filters or selecting different options.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Graph 1: Market Size by Product Type */}
           {((analysisData.productTypeChartData.length > 0 && analysisData.productTypes && analysisData.productTypes.length > 0) || 
             (analysisData.productTypeIsStacked && analysisData.productTypeStackedData.chartData.length > 0 && analysisData.productTypeStackedData.segments.length > 0)) && (
@@ -1814,12 +2388,12 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
                       nameKey="year"
                     />
                   ) : (
-                    <SegmentGroupedBarChart
-                      data={analysisData.productTypeChartData}
-                      segmentKeys={analysisData.productTypes}
-                      xAxisLabel="Year"
-                      yAxisLabel={getDataLabel()}
-                    />
+                  <SegmentGroupedBarChart
+                    data={analysisData.productTypeChartData}
+                    segmentKeys={analysisData.productTypes}
+                    xAxisLabel="Year"
+                    yAxisLabel={getDataLabel()}
+                  />
                   )}
                 </div>
               </div>
@@ -2189,12 +2763,12 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
                       multiple={false}
                     />
                     {attractivenessFilters.segmentType === 'productType' && (
-                      <HierarchicalFilterDropdown
+                  <HierarchicalFilterDropdown
                         label=""
                         value={attractivenessFilters.segmentValues}
                         onChange={(value) => setAttractivenessFilters({ ...attractivenessFilters, segmentValues: value as string[] })}
-                        hierarchy={getProductTypeHierarchy()}
-                      />
+                    hierarchy={getProductTypeHierarchy()}
+                  />
                     )}
                     {attractivenessFilters.segmentType === 'bladeMaterial' && (
                       <FilterDropdown
@@ -2304,7 +2878,7 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
                     </h3>
                   </div>
                   <p className="text-base text-text-secondary-light dark:text-text-secondary-dark ml-4">
-                    Filter YoY and CAGR analysis data by region and product type.
+                    Filter YoY and CAGR analysis data by region and segment.
                   </p>
                 </div>
                 
@@ -2318,12 +2892,85 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
                     }}
                     options={yoyFilterOptions.regions}
                   />
-                  <HierarchicalFilterDropdown
-                    label="By Product Type"
-                    value={yoyFilters.productType}
-                    onChange={(value) => setYoyFilters({ ...yoyFilters, productType: value as string[] })}
-                    hierarchy={getProductTypeHierarchy()}
-                  />
+                  <div className="space-y-4">
+                  <FilterDropdown
+                      label="By Segment"
+                      value={yoyFilters.segmentType || ''}
+                      onChange={(value) => {
+                        const selectedSegment = Array.isArray(value) ? String(value[0] || '') : String(value || '')
+                        setYoyFilters({ 
+                          ...yoyFilters, 
+                          segmentType: selectedSegment,
+                          segmentValues: [] // Clear segment values when segment type changes
+                        })
+                      }}
+                      options={[
+                        'productType',
+                        'bladeMaterial',
+                        'handleLength',
+                        'application',
+                        'endUser',
+                        'distributionChannelType',
+                      ]}
+                      optionLabels={{
+                        'productType': 'By Product Type',
+                        'bladeMaterial': 'By Product Form',
+                        'handleLength': 'By Price Range',
+                        'application': 'By Age Group',
+                        'endUser': 'By Profession',
+                        'distributionChannelType': 'By Sales Channel',
+                      }}
+                      multiple={false}
+                    />
+                    {yoyFilters.segmentType === 'productType' && (
+                      <HierarchicalFilterDropdown
+                        label=""
+                        value={yoyFilters.segmentValues}
+                        onChange={(value) => setYoyFilters({ ...yoyFilters, segmentValues: value as string[] })}
+                        hierarchy={getProductTypeHierarchy()}
+                      />
+                    )}
+                    {yoyFilters.segmentType === 'bladeMaterial' && (
+                  <FilterDropdown
+                        label=""
+                        value={yoyFilters.segmentValues}
+                        onChange={(value) => setYoyFilters({ ...yoyFilters, segmentValues: value as string[] })}
+                        options={uniqueOptions.bladeMaterials || []}
+                      />
+                    )}
+                    {yoyFilters.segmentType === 'handleLength' && (
+                      <FilterDropdown
+                        label=""
+                        value={yoyFilters.segmentValues}
+                        onChange={(value) => setYoyFilters({ ...yoyFilters, segmentValues: value as string[] })}
+                        options={uniqueOptions.handleLengths || []}
+                      />
+                    )}
+                    {yoyFilters.segmentType === 'application' && (
+                      <FilterDropdown
+                        label=""
+                        value={yoyFilters.segmentValues}
+                        onChange={(value) => setYoyFilters({ ...yoyFilters, segmentValues: value as string[] })}
+                        options={uniqueOptions.applications || []}
+                      />
+                    )}
+                    {yoyFilters.segmentType === 'endUser' && (
+                      <FilterDropdown
+                        label=""
+                        value={yoyFilters.segmentValues}
+                        onChange={(value) => setYoyFilters({ ...yoyFilters, segmentValues: value as string[] })}
+                        options={uniqueOptions.endUsers || []}
+                      />
+                    )}
+                    {yoyFilters.segmentType === 'distributionChannelType' && (
+                      <NestedHierarchicalFilterDropdown
+                        label=""
+                        value={yoyFilters.segmentValues}
+                        onChange={(value) => setYoyFilters({ ...yoyFilters, segmentValues: value as string[] })}
+                        hierarchy={getSalesChannelHierarchy()}
+                      />
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -2331,14 +2978,16 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
                 <div className="mb-8">
                   <div className="flex items-center gap-3 mb-3">
                     <div className={`w-1 h-10 rounded-full ${isDark ? 'bg-cyan-accent' : 'bg-electric-blue'}`}></div>
-                    <InfoTooltip content="• Shows Year-over-Year (Y-o-Y) growth rate and Compound Annual Growth Rate (CAGR)\n• Toggle between Y-o-Y and CAGR views using the button\n• Y-o-Y shows year-to-year growth percentage\n• CAGR shows cumulative annual growth rate from the first year\n• Select regions to generate separate charts for each (no summation)\n• Use filters to analyze specific regions and product types">
+                    <InfoTooltip content="• Shows Year-over-Year (Y-o-Y) growth rate and Compound Annual Growth Rate (CAGR)\n• Toggle between Y-o-Y and CAGR views using the button\n• Y-o-Y shows year-to-year growth percentage\n• CAGR shows cumulative annual growth rate from the first year\n• Select regions to generate separate charts for each (no summation)\n• Use filters to analyze specific regions and segments">
                       <h2 className="text-3xl font-bold text-text-primary-light dark:text-text-primary-dark cursor-help">
                         Year-over-Year (Y-o-Y) & CAGR Analysis
                       </h2>
                     </InfoTooltip>
                   </div>
                   <p className="text-base text-text-secondary-light dark:text-text-secondary-dark ml-4 mb-2">
-                    Growth rate analysis with toggle between Y-o-Y and CAGR metrics. Separate charts for each selected region.
+                    {yoyFilters.segmentType
+                      ? 'Growth rate analysis with toggle between Y-o-Y and CAGR metrics. One chart showing all segment values as lines.'
+                      : 'Growth rate analysis with toggle between Y-o-Y and CAGR metrics. Separate charts for each selected region.'}
                   </p>
                 </div>
                 
@@ -2346,7 +2995,9 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
                   <div className={`p-6 rounded-xl shadow-lg ${isDark ? 'bg-navy-card border-2 border-navy-light' : 'bg-white border-2 border-gray-200'}`}>
                     <div className="flex items-center justify-center h-[400px]">
                       <p className="text-text-secondary-light dark:text-text-secondary-dark text-lg">
-                        Please select at least one region to view the analysis
+                        {yoyFilters.segmentType
+                          ? 'No data available for the selected segment. Please adjust your filters.'
+                          : 'Please select at least one region to view the analysis'}
                       </p>
                     </div>
                   </div>
@@ -2364,9 +3015,10 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
                         </div>
                         <div className="flex-1 flex items-center justify-center min-h-0 pt-2">
                           <YoYCAGRChart
-                            data={entity.data}
+                            data={entity.data as Array<{ year: string; yoy?: number; cagr?: number; [key: string]: any }>}
                             xAxisLabel="Year"
                             yAxisLabel="Growth Rate (%)"
+                            segmentKeys={(entity as any).segmentKeys}
                           />
                         </div>
                       </div>

@@ -18,13 +18,15 @@ interface SegmentGroupedBarChartProps {
   segmentKeys: string[]
   xAxisLabel?: string
   yAxisLabel?: string
+  xAxisDataKey?: string
 }
 
 export function SegmentGroupedBarChart({ 
   data, 
   segmentKeys,
   xAxisLabel = 'Year', 
-  yAxisLabel = 'Value' 
+  yAxisLabel = 'Value',
+  xAxisDataKey = 'year'
 }: SegmentGroupedBarChartProps) {
   const { theme } = useTheme()
   const isDark = theme === 'dark'
@@ -56,8 +58,8 @@ export function SegmentGroupedBarChart({
       
       if (!hoveredItem) return null
       
-      // Get the year from the payload's data point to ensure accuracy
-      const yearFromData = hoveredItem.payload?.year || label
+      // Get the x-axis value from the payload's data point to ensure accuracy
+      const xAxisValue = hoveredItem.payload?.[xAxisDataKey] || label
       
       // Extract unit from yAxisLabel (e.g., "Market Value (US$ Million)" -> "US$ Million")
       const unitMatch = yAxisLabel.match(/\(([^)]+)\)/)
@@ -69,7 +71,7 @@ export function SegmentGroupedBarChart({
             ? 'bg-navy-card border-electric-blue text-white' 
             : 'bg-white border-electric-blue text-gray-900'
         }`}>
-          <p className="font-bold text-base mb-2">{xAxisLabel}: {yearFromData}</p>
+          <p className="font-bold text-base mb-2">{xAxisLabel}: {xAxisValue}</p>
           <div className="flex items-center gap-2">
             <div 
               className="w-4 h-4 rounded" 
@@ -113,12 +115,12 @@ export function SegmentGroupedBarChart({
       >
         <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#4A5568' : '#EAEAEA'} />
         <XAxis 
-          dataKey="year" 
+          dataKey={xAxisDataKey} 
           stroke={isDark ? '#A0AEC0' : '#4A5568'}
-          style={{ fontSize: '13px', fontWeight: 500 }}
-          angle={0}
-          textAnchor="start"
-          height={60}
+          style={{ fontSize: '12px', fontWeight: 500 }}
+          angle={xAxisDataKey === 'company' ? -45 : 0}
+          textAnchor={xAxisDataKey === 'company' ? 'end' : 'start'}
+          height={xAxisDataKey === 'company' ? 120 : 60}
           interval={0}
           tick={{ fill: isDark ? '#E2E8F0' : '#2D3748' }}
           tickMargin={15}

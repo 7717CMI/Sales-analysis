@@ -24,7 +24,7 @@ export function Home({ onNavigate }: HomeProps) {
       gradient: "#0075FF",
     },
     {
-      title: "Company Sales Analysis",
+      title: "Company / Brand Sales Intelligence",
       description: "Customer data analysis and insights",
       icon: Users,
       id: "CustomerIntelligence",
