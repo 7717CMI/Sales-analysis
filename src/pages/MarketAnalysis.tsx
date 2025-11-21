@@ -51,7 +51,8 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
   // Separate filters for attractiveness tab
   const [attractivenessFilters, setAttractivenessFilters] = useState({
     region: [] as string[],
-    productType: [] as string[],
+    segmentType: '' as string, // 'productType' | 'bladeMaterial' | 'handleLength' | 'application' | 'endUser' | 'distributionChannelType'
+    segmentValues: [] as string[],
   })
   
   // Separate filters for YoY/CAGR tab
@@ -109,11 +110,12 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
             marketEvaluation: 'By Value',
           })
           
-          // Initialize attractiveness filters with all regions and all product types by default
+          // Initialize attractiveness filters with all regions by default
           // Only set if filters are currently empty (first load)
           setAttractivenessFilters(prev => ({
             region: prev.region.length === 0 ? availableRegions : prev.region, // All regions selected by default
-            productType: prev.productType.length === 0 ? availableProductTypes : prev.productType, // All product types selected by default
+            segmentType: prev.segmentType || '', // No segment selected by default
+            segmentValues: prev.segmentValues || [], // No segment values selected by default
           }))
           
           // Initialize YoY/CAGR filters with all regions and all product types by default
@@ -762,7 +764,13 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
     const productTypeSet = new Set<string>()
     
     data.forEach(d => {
-      if (d.region) regionSet.add(d.region)
+      if (d.region) {
+        // Only include India regions
+        const indiaRegions = ['North India', 'South India', 'East India', 'West India', 'Central India']
+        if (indiaRegions.includes(d.region)) {
+          regionSet.add(d.region)
+        }
+      }
       if (d.productType) productTypeSet.add(d.productType)
     })
     
@@ -782,8 +790,85 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
     if (attractivenessFilters.region.length > 0) {
       filtered = filtered.filter(d => attractivenessFilters.region.includes(d.region))
     }
-    if (attractivenessFilters.productType.length > 0) {
-      filtered = filtered.filter(d => attractivenessFilters.productType.includes(d.productType))
+    
+    // Filter by selected segment type and values
+    if (attractivenessFilters.segmentType && attractivenessFilters.segmentValues.length > 0) {
+      const segmentType = attractivenessFilters.segmentType
+      const segmentValues = attractivenessFilters.segmentValues
+      
+      // Get all sub-elements for hierarchical segments
+      let allSegmentValues = [...segmentValues]
+      
+      // For Product Type, expand hierarchical values to include all sub-items
+      if (segmentType === 'productType') {
+        const hierarchy = getProductTypeHierarchy()
+        const expandedValues = new Set<string>(segmentValues)
+        
+        // Recursively find all children of selected items
+        const findChildren = (items: any[]) => {
+          items.forEach(item => {
+            if (segmentValues.includes(item.value)) {
+              if (item.children) {
+                item.children.forEach((child: any) => {
+                  expandedValues.add(child.value)
+                  if (child.children) {
+                    findChildren(child.children)
+                  }
+                })
+              }
+            } else if (item.children) {
+              findChildren(item.children)
+            }
+          })
+        }
+        findChildren(hierarchy)
+        allSegmentValues = Array.from(expandedValues)
+      }
+      
+      // For Sales Channel, expand hierarchical values
+      if (segmentType === 'distributionChannelType') {
+        const hierarchy = getSalesChannelHierarchy()
+        const expandedValues = new Set<string>(segmentValues)
+        
+        const findChildren = (items: any[]) => {
+          items.forEach(item => {
+            if (segmentValues.includes(item.value)) {
+              if (item.children) {
+                item.children.forEach((child: any) => {
+                  expandedValues.add(child.value)
+                  if (child.children) {
+                    findChildren(child.children)
+                  }
+                })
+              }
+            } else if (item.children) {
+              findChildren(item.children)
+            }
+          })
+        }
+        findChildren(hierarchy)
+        allSegmentValues = Array.from(expandedValues)
+      }
+      
+      // Apply filter based on segment type
+      filtered = filtered.filter(d => {
+        switch (segmentType) {
+          case 'productType':
+            return allSegmentValues.includes(d.productType || '')
+          case 'bladeMaterial':
+            return allSegmentValues.includes(d.bladeMaterial || '')
+          case 'handleLength':
+            return allSegmentValues.includes(d.handleLength || '')
+          case 'application':
+            return allSegmentValues.includes(d.application || '')
+          case 'endUser':
+            return allSegmentValues.includes(d.endUser || '')
+          case 'distributionChannelType':
+            return allSegmentValues.includes(d.distributionChannelType || '')
+          default:
+            return true
+        }
+      })
     }
     
     return filtered
@@ -791,40 +876,166 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
 
   // Bubble Chart Data (Market Attractiveness) - based on filters
   const bubbleChartData = useMemo(() => {
-    // Group data by region
-    const regionDataMap = new Map<string, {
+    // Helper function to generate consistent but varied incremental opportunity based on entity name
+    const getRandomizedOpportunity = (entityName: string, isSegment: boolean): number => {
+      // Create a simple hash from entity name for consistency
+      let hash = 0
+      for (let i = 0; i < entityName.length; i++) {
+        hash = ((hash << 5) - hash) + entityName.charCodeAt(i)
+        hash = hash & hash // Convert to 32-bit integer
+      }
+      
+      // Use hash to generate a consistent random value between 250 and 650
+      // This ensures same entity always gets same value, but different entities get different values
+      const normalizedHash = Math.abs(hash) % 400 // 0-399
+      const baseValue = 250 + normalizedHash // 250-649
+      
+      // Add some variation: multiply by a factor between 0.9 and 1.3 to get values like 300, 560, 490
+      const variation = 0.9 + (Math.abs(hash * 11) % 40) / 100 // 0.9-1.3
+      const finalValue = Math.round(baseValue * variation)
+      
+      // Ensure value is in reasonable range (250-650)
+      return Math.max(250, Math.min(650, finalValue))
+    }
+    
+    const segmentType = attractivenessFilters.segmentType
+    const segmentValues = attractivenessFilters.segmentValues
+    
+    // Determine grouping: by sub-segments if segment type is selected, otherwise by region
+    let entityDataMap = new Map<string, {
       values: number[]
       volumes: number[]
       years: number[]
     }>()
     
-    filteredAttractivenessData.forEach(d => {
-      const region = d.region
-      if (!region) return
-      
-      if (!regionDataMap.has(region)) {
-        regionDataMap.set(region, { values: [], volumes: [], years: [] })
-      }
-      
-      const regionData = regionDataMap.get(region)!
-      const value = (d.marketValueUsd || 0) / 1000 // Convert to millions
-      regionData.values.push(value)
-      regionData.volumes.push(d.volumeUnits || 0)
-      regionData.years.push(d.year)
-    })
+    if (segmentType && segmentValues.length > 0) {
+      // Group by sub-segments of the selected segment type
+      filteredAttractivenessData.forEach(d => {
+        let entityKey = ''
+        
+        switch (segmentType) {
+          case 'productType':
+            entityKey = d.productType || ''
+            break
+          case 'bladeMaterial':
+            entityKey = d.bladeMaterial || ''
+            break
+          case 'handleLength':
+            entityKey = d.handleLength || ''
+            break
+          case 'application':
+            entityKey = d.application || ''
+            break
+          case 'endUser':
+            entityKey = d.endUser || ''
+            break
+          case 'distributionChannelType':
+            entityKey = d.distributionChannelType || ''
+            break
+        }
+        
+        if (!entityKey) return
+        
+        // Get all sub-elements for hierarchical segments
+        let allSegmentValues = [...segmentValues]
+        
+        // For Product Type, expand hierarchical values to include all sub-items
+        if (segmentType === 'productType') {
+          const hierarchy = getProductTypeHierarchy()
+          const expandedValues = new Set<string>(segmentValues)
+          
+          const findChildren = (items: any[]) => {
+            items.forEach(item => {
+              if (segmentValues.includes(item.value)) {
+                if (item.children) {
+                  item.children.forEach((child: any) => {
+                    expandedValues.add(child.value)
+                    if (child.children) {
+                      findChildren(child.children)
+                    }
+                  })
+                }
+              } else if (item.children) {
+                findChildren(item.children)
+              }
+            })
+          }
+          findChildren(hierarchy)
+          allSegmentValues = Array.from(expandedValues)
+        }
+        
+        // For Sales Channel, expand hierarchical values
+        if (segmentType === 'distributionChannelType') {
+          const hierarchy = getSalesChannelHierarchy()
+          const expandedValues = new Set<string>(segmentValues)
+          
+          const findChildren = (items: any[]) => {
+            items.forEach(item => {
+              if (segmentValues.includes(item.value)) {
+                if (item.children) {
+                  item.children.forEach((child: any) => {
+                    expandedValues.add(child.value)
+                    if (child.children) {
+                      findChildren(child.children)
+                    }
+                  })
+                }
+              } else if (item.children) {
+                findChildren(item.children)
+              }
+            })
+          }
+          findChildren(hierarchy)
+          allSegmentValues = Array.from(expandedValues)
+        }
+        
+        // Only include entities that match the selected segment values
+        if (!allSegmentValues.includes(entityKey)) return
+        
+        if (!entityDataMap.has(entityKey)) {
+          entityDataMap.set(entityKey, { values: [], volumes: [], years: [] })
+        }
+        
+        const entityData = entityDataMap.get(entityKey)!
+        const value = (d.marketValueUsd || 0) / 1000 // Convert to millions
+        entityData.values.push(value)
+        entityData.volumes.push(d.volumeUnits || 0)
+        entityData.years.push(d.year)
+      })
+    } else {
+      // Group by region (default behavior) - only India regions
+      filteredAttractivenessData.forEach(d => {
+        const region = d.region
+        if (!region) return
+        
+        // Only include India regions
+        const indiaRegions = ['North India', 'South India', 'East India', 'West India', 'Central India']
+        if (!indiaRegions.includes(region)) return
+        
+        if (!entityDataMap.has(region)) {
+          entityDataMap.set(region, { values: [], volumes: [], years: [] })
+        }
+        
+        const regionData = entityDataMap.get(region)!
+        const value = (d.marketValueUsd || 0) / 1000 // Convert to millions
+        regionData.values.push(value)
+        regionData.volumes.push(d.volumeUnits || 0)
+        regionData.years.push(d.year)
+      })
+    }
     
-    // Calculate CAGR Index and Market Share Index for each region
-    const regions = Array.from(regionDataMap.keys())
-    const allRegionsTotal = filteredAttractivenessData.reduce((sum, d) => sum + (d.marketValueUsd || 0) / 1000, 0)
+    // Calculate CAGR Index and Market Share Index for each entity
+    const entities = Array.from(entityDataMap.keys())
+    const allEntitiesTotal = filteredAttractivenessData.reduce((sum, d) => sum + (d.marketValueUsd || 0) / 1000, 0)
     
-    const bubbleData = regions.map(region => {
-      const regionData = regionDataMap.get(region)!
+    const bubbleData = entities.map(entity => {
+      const entityData = entityDataMap.get(entity)!
       
       // Calculate CAGR (Compound Annual Growth Rate) from 2025 to 2032
       const startYear = 2025
       const endYear = 2032
-      const startValue = regionData.values.find((_, i) => regionData.years[i] === startYear) || 0
-      const endValue = regionData.values.find((_, i) => regionData.years[i] === endYear) || 0
+      const startValue = entityData.values.find((_, i) => entityData.years[i] === startYear) || 0
+      const endValue = entityData.values.find((_, i) => entityData.years[i] === endYear) || 0
       
       let cagr = 0
       if (startValue > 0 && endValue > 0) {
@@ -833,8 +1044,8 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
       }
       
       // Calculate Market Share Index (average market share across years)
-      const regionTotal = regionData.values.reduce((sum, v) => sum + v, 0)
-      const marketShare = allRegionsTotal > 0 ? (regionTotal / allRegionsTotal) * 100 : 0
+      const entityTotal = entityData.values.reduce((sum, v) => sum + v, 0)
+      const marketShare = allEntitiesTotal > 0 ? (entityTotal / allEntitiesTotal) * 100 : 0
       
       // Calculate Incremental Opportunity (total growth from 2025 to 2032)
       const incrementalOpportunity = endValue - startValue
@@ -843,44 +1054,50 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
       const cagrIndex = Math.min(cagr / 10, 10) // Scale CAGR to 0-10 index
       const marketShareIndex = Math.min(marketShare / 10, 10) // Scale market share to 0-10 index
       
-      // Use default values if no data
+      // Use default values if no data (only for regions)
       const defaultValues: Record<string, { cagr: number; share: number; opp: number }> = {
-        'Asia Pacific': { cagr: 8.5, share: 9.2, opp: 12500 },
-        'Europe': { cagr: 5.2, share: 6.8, opp: 6800 },
-        'Rest of Europe': { cagr: 4.8, share: 5.5, opp: 5500 },
-        'North America': { cagr: 5.8, share: 7.1, opp: 7200 },
-        'Middle East': { cagr: 6.5, share: 3.2, opp: 1200 },
-        'Latin America': { cagr: 4.2, share: 2.8, opp: 800 },
-        'Africa': { cagr: 3.8, share: 1.9, opp: 400 },
-        'South India': { cagr: 6.0, share: 3.0, opp: 5000 },
-        'East India': { cagr: 2.5, share: 1.2, opp: 3000 },
+        'South India': { cagr: 6.0, share: 3.0, opp: 560 },
+        'East India': { cagr: 2.5, share: 1.2, opp: 300 },
+        'North India': { cagr: 5.0, share: 4.0, opp: 490 },
+        'West India': { cagr: 4.5, share: 3.5, opp: 420 },
+        'Central India': { cagr: 3.5, share: 2.5, opp: 380 },
       }
       
-      const defaults = defaultValues[region] || { cagr: 5.0, share: 5.0, opp: 5000 }
+      const defaults = defaultValues[entity] || { cagr: 5.0, share: 5.0, opp: getRandomizedOpportunity(entity, !!segmentType) }
       
-      // Use region name as display name
-      const regionDisplayName = region
+      // Use entity name as display name (sub-segment name or region name)
+      const displayName = entity
       
-      // Override with specific values for South India and East India
-      let finalCagrIndex = cagrIndex > 0 ? cagrIndex : defaults.cagr
-      let finalMarketShareIndex = marketShareIndex > 0 ? marketShareIndex : defaults.share
+      // Override with specific values for South India and East India (only if grouping by region)
+      let finalCagrIndex = cagrIndex > 0 ? cagrIndex : (segmentType ? 5.0 : defaults.cagr)
+      let finalMarketShareIndex = marketShareIndex > 0 ? marketShareIndex : (segmentType ? 5.0 : defaults.share)
       
-      if (region === 'South India') {
+      if (!segmentType && entity === 'South India') {
         finalCagrIndex = 6.0
         finalMarketShareIndex = 3.0
-      } else if (region === 'East India') {
+      } else if (!segmentType && entity === 'East India') {
         finalCagrIndex = 2.5
         finalMarketShareIndex = 1.2
       }
       
+      // Use calculated incremental opportunity if available, otherwise use randomized value
+      let finalIncrementalOpportunity = incrementalOpportunity
+      if (finalIncrementalOpportunity <= 0) {
+        if (segmentType) {
+          // For segments, use randomized value based on entity name
+          finalIncrementalOpportunity = getRandomizedOpportunity(entity, true)
+        } else {
+          // For regions, use default or randomized value
+          finalIncrementalOpportunity = defaults.opp
+        }
+      }
+      
       return {
-        region: regionDisplayName,
+        region: displayName,
         cagrIndex: finalCagrIndex,
         marketShareIndex: finalMarketShareIndex,
-        incrementalOpportunity: incrementalOpportunity > 0 ? incrementalOpportunity : defaults.opp,
-        description: regionDisplayName === 'Asia Pacific' 
-          ? 'Asia Pacific are expected to dominate the Global Shovel Market from rapid industrialization, strong manufacturing capabilities, and robust construction and agricultural sectors that drive significant demand for high-quality shovels.'
-          : undefined,
+        incrementalOpportunity: finalIncrementalOpportunity,
+        description: undefined,
       }
     })
     
@@ -998,63 +1215,42 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
     }
     
     // Apply separation to bubble data
-    // If no regions in filtered data, return default regions (also separated)
-    if (bubbleData.length === 0) {
+    // If no entities in filtered data, return default India regions (also separated)
+    if (bubbleData.length === 0 && !segmentType) {
       const defaultData = [
         {
-          region: 'Asia Pacific',
-          cagrIndex: 8.5,
-          marketShareIndex: 9.2,
-          incrementalOpportunity: 12500,
-          description: 'Asia Pacific are expected to dominate the Global Shovel Market from rapid industrialization, strong manufacturing capabilities, and robust construction and agricultural sectors that drive significant demand for high-quality shovels.',
-        },
-        {
-          region: 'Europe',
-          cagrIndex: 5.2,
-          marketShareIndex: 6.8,
-          incrementalOpportunity: 6800,
-          description: undefined,
-        },
-        {
-          region: 'North America',
-          cagrIndex: 5.8,
-          marketShareIndex: 7.1,
-          incrementalOpportunity: 7200,
-          description: undefined,
-        },
-        {
-          region: 'Middle East',
-          cagrIndex: 6.5,
-          marketShareIndex: 3.2,
-          incrementalOpportunity: 1200,
-          description: undefined,
-        },
-        {
-          region: 'Latin America',
-          cagrIndex: 4.2,
-          marketShareIndex: 2.8,
-          incrementalOpportunity: 800,
-          description: undefined,
-        },
-        {
-          region: 'Africa',
-          cagrIndex: 3.8,
-          marketShareIndex: 1.9,
-          incrementalOpportunity: 400,
+          region: 'North India',
+          cagrIndex: 5.0,
+          marketShareIndex: 4.0,
+          incrementalOpportunity: 490,
           description: undefined,
         },
         {
           region: 'South India',
           cagrIndex: 6.0,
           marketShareIndex: 3.0,
-          incrementalOpportunity: 5000,
+          incrementalOpportunity: 560,
           description: undefined,
         },
         {
           region: 'East India',
           cagrIndex: 2.5,
           marketShareIndex: 1.2,
-          incrementalOpportunity: 3000,
+          incrementalOpportunity: 300,
+          description: undefined,
+        },
+        {
+          region: 'West India',
+          cagrIndex: 4.5,
+          marketShareIndex: 3.5,
+          incrementalOpportunity: 420,
+          description: undefined,
+        },
+        {
+          region: 'Central India',
+          cagrIndex: 3.5,
+          marketShareIndex: 2.5,
+          incrementalOpportunity: 380,
           description: undefined,
         },
       ]
@@ -1063,7 +1259,7 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
     
     // Return separated bubble data
     return separateBubbleData(bubbleData)
-  }, [filteredAttractivenessData])
+  }, [filteredAttractivenessData, attractivenessFilters.segmentType, attractivenessFilters.segmentValues])
 
   // Get unique options for YoY filters
   const yoyFilterOptions = useMemo(() => {
@@ -1818,7 +2014,7 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
                     </h3>
                   </div>
                   <p className="text-base text-text-secondary-light dark:text-text-secondary-dark ml-4">
-                    Filter market attractiveness data by region and product type (2025-2032).
+                    Filter market attractiveness data by region and segment (2025-2032).
                   </p>
                 </div>
                 
@@ -1829,12 +2025,85 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
                     onChange={(value) => setAttractivenessFilters({ ...attractivenessFilters, region: value as string[] })}
                     options={attractivenessFilterOptions.regions}
                   />
-                  <HierarchicalFilterDropdown
-                    label="By Product Type"
-                    value={attractivenessFilters.productType}
-                    onChange={(value) => setAttractivenessFilters({ ...attractivenessFilters, productType: value as string[] })}
-                    hierarchy={getProductTypeHierarchy()}
-                  />
+                  <div className="space-y-4">
+                    <FilterDropdown
+                      label="By Segment"
+                      value={attractivenessFilters.segmentType || ''}
+                      onChange={(value) => {
+                        const selectedSegment = Array.isArray(value) ? String(value[0] || '') : String(value || '')
+                        setAttractivenessFilters({ 
+                          ...attractivenessFilters, 
+                          segmentType: selectedSegment,
+                          segmentValues: [] // Clear segment values when segment type changes
+                        })
+                      }}
+                      options={[
+                        'productType',
+                        'bladeMaterial',
+                        'handleLength',
+                        'application',
+                        'endUser',
+                        'distributionChannelType',
+                      ]}
+                      optionLabels={{
+                        'productType': 'By Product Type',
+                        'bladeMaterial': 'By Product Form',
+                        'handleLength': 'By Price Range',
+                        'application': 'By Age Group',
+                        'endUser': 'By Profession',
+                        'distributionChannelType': 'By Sales Channel',
+                      }}
+                      multiple={false}
+                    />
+                    {attractivenessFilters.segmentType === 'productType' && (
+                      <HierarchicalFilterDropdown
+                        label=""
+                        value={attractivenessFilters.segmentValues}
+                        onChange={(value) => setAttractivenessFilters({ ...attractivenessFilters, segmentValues: value as string[] })}
+                        hierarchy={getProductTypeHierarchy()}
+                      />
+                    )}
+                    {attractivenessFilters.segmentType === 'bladeMaterial' && (
+                      <FilterDropdown
+                        label=""
+                        value={attractivenessFilters.segmentValues}
+                        onChange={(value) => setAttractivenessFilters({ ...attractivenessFilters, segmentValues: value as string[] })}
+                        options={uniqueOptions.bladeMaterials || []}
+                      />
+                    )}
+                    {attractivenessFilters.segmentType === 'handleLength' && (
+                      <FilterDropdown
+                        label=""
+                        value={attractivenessFilters.segmentValues}
+                        onChange={(value) => setAttractivenessFilters({ ...attractivenessFilters, segmentValues: value as string[] })}
+                        options={uniqueOptions.handleLengths || []}
+                      />
+                    )}
+                    {attractivenessFilters.segmentType === 'application' && (
+                      <FilterDropdown
+                        label=""
+                        value={attractivenessFilters.segmentValues}
+                        onChange={(value) => setAttractivenessFilters({ ...attractivenessFilters, segmentValues: value as string[] })}
+                        options={uniqueOptions.applications || []}
+                      />
+                    )}
+                    {attractivenessFilters.segmentType === 'endUser' && (
+                      <FilterDropdown
+                        label=""
+                        value={attractivenessFilters.segmentValues}
+                        onChange={(value) => setAttractivenessFilters({ ...attractivenessFilters, segmentValues: value as string[] })}
+                        options={uniqueOptions.endUsers || []}
+                      />
+                    )}
+                    {attractivenessFilters.segmentType === 'distributionChannelType' && (
+                      <NestedHierarchicalFilterDropdown
+                        label=""
+                        value={attractivenessFilters.segmentValues}
+                        onChange={(value) => setAttractivenessFilters({ ...attractivenessFilters, segmentValues: value as string[] })}
+                        hierarchy={getSalesChannelHierarchy()}
+                      />
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -1842,9 +2111,17 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
                 <div className="mb-8">
                   <div className="flex items-center gap-3 mb-3">
                     <div className={`w-1 h-10 rounded-full ${isDark ? 'bg-cyan-accent' : 'bg-electric-blue'}`}></div>
-                    <InfoTooltip content="• Shows market attractiveness by region from 2025 to 2032\n• X-axis: CAGR Index (Compound Annual Growth Rate)\n• Y-axis: Market Share Index\n• Bubble size indicates incremental opportunity\n• Larger bubbles represent greater market potential">
+                    <InfoTooltip content="• Shows market attractiveness by region or segment from 2025 to 2032\n• X-axis: CAGR Index (Compound Annual Growth Rate)\n• Y-axis: Market Share Index\n• Bubble size indicates incremental opportunity\n• Larger bubbles represent greater market potential">
                       <h2 className="text-3xl font-bold text-text-primary-light dark:text-text-primary-dark cursor-help">
-                        Market Attractiveness, By Region, 2025-2032
+                        Market Attractiveness, {attractivenessFilters.segmentType 
+                          ? (attractivenessFilters.segmentType === 'productType' ? 'By Product Type' :
+                             attractivenessFilters.segmentType === 'bladeMaterial' ? 'By Product Form' :
+                             attractivenessFilters.segmentType === 'handleLength' ? 'By Price Range' :
+                             attractivenessFilters.segmentType === 'application' ? 'By Age Group' :
+                             attractivenessFilters.segmentType === 'endUser' ? 'By Profession' :
+                             attractivenessFilters.segmentType === 'distributionChannelType' ? 'By Sales Channel' :
+                             'By Segment')
+                          : 'By Region'}, 2025-2032
                       </h2>
                     </InfoTooltip>
                   </div>
@@ -1855,7 +2132,15 @@ export function MarketAnalysis({ onNavigate }: MarketAnalysisProps) {
                 <div className={`p-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 h-[600px] flex flex-col ${isDark ? 'bg-navy-card border-2 border-navy-light' : 'bg-white border-2 border-gray-200'}`}>
                   <div className="mb-4 pb-4 border-b border-gray-200 dark:border-navy-light">
                     <h3 className="text-lg font-bold text-electric-blue dark:text-cyan-accent mb-1">
-                      Market Attractiveness Analysis
+                      {attractivenessFilters.segmentType 
+                        ? (attractivenessFilters.segmentType === 'productType' ? 'By Product Type' :
+                           attractivenessFilters.segmentType === 'bladeMaterial' ? 'By Product Form' :
+                           attractivenessFilters.segmentType === 'handleLength' ? 'By Price Range' :
+                           attractivenessFilters.segmentType === 'application' ? 'By Age Group' :
+                           attractivenessFilters.segmentType === 'endUser' ? 'By Profession' :
+                           attractivenessFilters.segmentType === 'distributionChannelType' ? 'By Sales Channel' :
+                           'By Segment')
+                        : 'By Region'}
                     </h3>
                     <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
                       CAGR Index vs Market Share Index
